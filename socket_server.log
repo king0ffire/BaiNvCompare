@@ -1,0 +1,9 @@
+2024-08-22 10:44:16,803 DEBUG MainThread component.highlight_modified_lines:68 highligh a modified line: 0, line column is1
+2024-08-22 10:44:18,847 DEBUG MainThread component.highlight_modified_lines:68 highligh a modified line: 1, line column is0
+2024-08-22 10:44:19,887 DEBUG MainThread component.highlight_modified_lines:68 highligh a modified line: 2, line column is0
+2024-08-22 10:44:22,030 DEBUG MainThread component.highlight_modified_lines:68 highligh a modified line: 3, line column is0
+2024-08-22 10:44:23,199 DEBUG MainThread component.highlight_modified_lines:68 highligh a modified line: 4, line column is0
+2024-08-22 10:44:23,343 DEBUG MainThread component.highlight_modified_lines:68 highligh a modified line: 5, line column is0
+2024-08-22 10:44:23,502 DEBUG MainThread component.highlight_modified_lines:68 highligh a modified line: 6, line column is0
+2024-08-22 10:46:36,007 DEBUG MainThread component.highlight_modified_lines:68 highligh a modified line: 0, line column is0
+2024-08-22 10:52:39,835 DEBUG MainThread main.<module>:50 end with 0
