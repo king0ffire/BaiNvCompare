@@ -1,65 +1,17 @@
-from PyQt6 import QtWidgets, QtGui
-from PyQt6.QtGui import QTextCharFormat, QColor
-from ui.textviewer import DrapDropTextEdit
-import util.helper as helper
+from PyQt6.QtGui import QTextCharFormat, QColor, QTextCursor
 import logging
 import util.enumtypes as enumtypes
-import copy
+from typing import Callable
 
 logger = logging.getLogger(__name__)
 
 
 class DiffEngine:
-    def __init__(self, textedit: DrapDropTextEdit, textedit_2: DrapDropTextEdit):
-        self.textedit = textedit
-        self.textedit_2 = textedit_2
-
-    def diffandrefresh(self):
-        warning_box = None
-        try:
-            self.textedit.prepareoriginaldict()
-            logging.debug(f"debug original dict{self.textedit.originaldict}")
-        except helper.InvaildInputError as e:
-            warning_box = QtWidgets.QMessageBox(
-                QtWidgets.QMessageBox.Icon.Warning,
-                "warning",
-                f"invalid input in left window at line {e+1}",
-            )
-            warning_box.exec()
-        try:
-            self.textedit_2.prepareoriginaldict()
-        except helper.InvaildInputError as e:
-            warning_box = QtWidgets.QMessageBox(
-                QtWidgets.QMessageBox.Icon.Warning,
-                "warning",
-                f"invalid input in right window at line {e+1}",
-            )
-            warning_box.exec()
-        if warning_box is None:
-            self.textedit_2.diff_dict = helper.diff_dict_by_dict(
-                self.textedit_2.originalcontent,
-                self.textedit.originaldict
-            )
-            self.output_diff_dict(self.textedit_2, self.textedit_2.diff_dict)
-
-            self.textedit.diff_dict=helper.diff_dict_by_dict(
-                self.textedit.originalcontent,
-                self.textedit_2.originaldict
-            )
-            self.output_diff_dict(self.textedit, self.textedit.diff_dict)
-            
-            '''
-            self.output_diff_by_stringindict(
-                self.textedit_2, copy.deepcopy(self.textedit.originaldict)
-            )
-            self.output_diff_by_stringindict(
-                self.textedit, copy.deepcopy(self.textedit_2.originaldict)
-            )
-            '''
-
-    def output_diff_dict(self,textedit:DrapDropTextEdit,diff_dict:dict[str,dict[str,tuple]],dict_from_opponent=False):
-        textedit.editbyuser = False
-        textedit.clear()
+    def output_diff_dict(
+        self,
+        diff_dict: dict[str, dict[str, tuple]],
+        insert_handle: Callable[[str, QTextCharFormat], None],
+    ):
         green_format = QTextCharFormat()
         green_format.setBackground(QColor("green"))
         yellow_format = QTextCharFormat()
@@ -67,44 +19,28 @@ class DiffEngine:
         red_format = QTextCharFormat()
         red_format.setBackground(QColor("red"))
         normal_format = QTextCharFormat()
-
         logger.info("output by using dict: orderless")
-        cursor = textedit.textCursor()
-        
         for section, configs in diff_dict.items():
             logger.debug(f"section:{section}")
-            cursor.insertText(f"[{section}]\n", normal_format)
+            insert_handle(f"[{section}]\n", normal_format)
             for key, status in configs.items():
                 if status[1] == enumtypes.DiffType.ADDED:
                     logger.debug(
                         f"insert green: section:{section},key:{key},value:{status[0]}"
                     )
-                    cursor.insertText(f"{key}= {status[0]}\n", green_format)
+                    insert_handle(f"{key}= {status[0]}\n", green_format)
                 elif status[1] == enumtypes.DiffType.REMOVED:
                     logger.debug(
                         f"insert red: section:{section},key:{key},value:{status[0]}"
                     )
-                    cursor.insertText(f"missing:{key}= {status[0]}\n", red_format)
+                    insert_handle(f"missing:{key}= {status[0]}\n", red_format)
                 elif status[1] == enumtypes.DiffType.MODIFIED:
                     logger.debug(
                         f"insert yellow: section:{section},key:{key},value:{status[0]}"
                     )
-                    cursor.insertText(f"{key}= {status[0]}\n", yellow_format)
-        
-        logger.debug("switch to DIFF MODE")
-        textedit.textmode = enumtypes.TextMode.DIFF
-        textedit.savebutton.setText(
-            textedit._translate("MainWindow", f"同步差异到文件(功能未完成)")
-        )
-        textedit.label.setText(
-            textedit._translate(
-                "MainWindow", f"差异编辑模式: {textedit.fileoriginalfullpath}"
-            )
-        )
-        textedit.editbyuser = True
-        
-    
-    
+                    insert_handle(f"{key}= {status[0]}\n", yellow_format)
+
+    """
     def output_diff_by_stringindict(
         textedit: DrapDropTextEdit, opponent_dict: dict[str, dict[str, str]]
     ):
@@ -243,3 +179,4 @@ class DiffEngine:
             )
         )
         textedit.editbyuser = True
+    """

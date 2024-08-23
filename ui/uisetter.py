@@ -1,7 +1,7 @@
 from PyQt6 import QtWidgets, QtCore
 from ui.textviewer import DrapDropTextEdit
 import logging
-from core import diffengine
+from util import helper
 
 logger = logging.getLogger(__name__)
 
@@ -52,8 +52,7 @@ class Ui_MainWindow_2(object):
         self.menubar.setObjectName("menubar")
         MainWindow.setMenuBar(self.menubar)
 
-        self._diff_engine = diffengine.DiffEngine(self.textEdit, self.textEdit_2)
-        self.pushButton_3.clicked.connect(self._diff_engine.diffandrefresh)
+        self.pushButton_3.clicked.connect(self.diffandrefresh)
         self.pushButton.clicked.connect(self.textEdit.uploadfile)
         self.textEdit_2.bindsavebutton(self.pushButton_5)
         self.textEdit.bindsavebutton(self.pushButton_4)
@@ -78,3 +77,30 @@ class Ui_MainWindow_2(object):
         self.pushButton_4.setText(_translate("MainWindow", "保存"))
         self.label_2.setText(_translate("MainWindow", "编辑模式"))
         self.label.setText(_translate("MainWindow", "编辑模式"))
+
+    def diffandrefresh(self):
+        warning_box = None
+        try:
+            self.textEdit.prepareoriginaldict()
+            logging.debug(f"debug original dict{self.textEdit._original_dict}")
+        except helper.InvaildInputError as e:
+            warning_box = QtWidgets.QMessageBox(
+                QtWidgets.QMessageBox.Icon.Warning,
+                "warning",
+                f"invalid input in left window at line {int(e.args[0])+1}",
+            )
+            warning_box.exec()
+        try:
+            self.textEdit_2.prepareoriginaldict()
+        except helper.InvaildInputError as e:
+            warning_box = QtWidgets.QMessageBox(
+                QtWidgets.QMessageBox.Icon.Warning,
+                "warning",
+                f"invalid input in right window at line {int(e.args[0])+1}",
+            )
+            warning_box.exec()
+        if warning_box is None:
+            self.textEdit_2.construct_diff_dict(self.textEdit._original_dict)
+            self.textEdit_2.output_diff_dict()
+            self.textEdit.construct_diff_dict(self.textEdit_2._original_dict)
+            self.textEdit.output_diff_dict()

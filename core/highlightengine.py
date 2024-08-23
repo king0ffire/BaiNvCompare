@@ -51,12 +51,12 @@ def highlight_text(text_edit, comparison_result):
 
 class HighLightEngine:
 
-    def highlight_user_modified_line(self,cursor: QtGui.QTextCursor):
+    def highlight_user_modified_line(self, cursor: QtGui.QTextCursor):
         fmt = QTextCharFormat()
         fmt.setBackground(QColor(QtCore.Qt.GlobalColor.cyan))
         cursor.setCharFormat(fmt)
 
-    def highlight_line(self,cursor, format):
+    def highlight_line(self, cursor, format):
         # logger.debug(f"Current block content:{cursor.block().text()},Position in Block: {cursor.positionInBlock()}")
         # cursor.movePosition(cursor.MoveOperation.StartOfBlock)
         logger.debug(
@@ -69,7 +69,9 @@ class HighLightEngine:
         )
         cursor.mergeCharFormat(format)
 
-    def highlight_text(self,text_edit: QtWidgets.QTextEdit, comparison_result, is_opposite=False):
+    def highlight_text(
+        self, text_edit: QtWidgets.QTextEdit, comparison_result, is_opposite=False
+    ):
         green_format = QTextCharFormat()
         green_format.setBackground(QColor("green"))
 
@@ -130,7 +132,7 @@ class HighLightEngine:
                         logger.debug(
                             f"cursor selection:{cursor.hasSelection()},cursor line:{cursor.blockNumber()},cursor position:{cursor.positionInBlock()},cursor block content:{cursor.block().text()}"
                         )
-                        highlight_line(cursor, yellow_format)
+                        self.highlight_line(cursor, yellow_format)
                         logger.debug(f"{key} change to yellow")
                 cursor.movePosition(cursor.MoveOperation.NextBlock)
             logger.debug(
@@ -197,7 +199,9 @@ class HighLightEngine:
                 )
         """
 
-    def highlight_text_opposite(self,text_edit: QtWidgets.QTextEdit, comparison_result):
+    def highlight_text_opposite(
+        self, text_edit: QtWidgets.QTextEdit, comparison_result
+    ):
         green_format = QTextCharFormat()
         green_format.setBackground(QColor("green"))
 
@@ -250,7 +254,7 @@ class HighLightEngine:
                         comparison_result[current_section][key][0]
                         == enumtypes.DiffType.REMOVED
                     ):
-                        highlight_line(cursor, green_format)
+                        self.highlight_line(cursor, green_format)
                         logger.debug(f"{key} change to green")
                     elif (
                         comparison_result[current_section][key][0]
@@ -259,7 +263,7 @@ class HighLightEngine:
                         logger.debug(
                             f"cursor selection:{cursor.hasSelection()},cursor line:{cursor.blockNumber()},cursor position:{cursor.positionInBlock()},cursor block content:{cursor.block().text()}"
                         )
-                        highlight_line(cursor, yellow_format)
+                        self.highlight_line(cursor, yellow_format)
                         logger.debug(f"{key} change to yellow")
                 cursor.movePosition(cursor.MoveOperation.NextBlock)
             logger.debug(
