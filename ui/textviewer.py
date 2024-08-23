@@ -1,12 +1,11 @@
 from PyQt6 import QtWidgets,QtCore,QtGui
-from PyQt6.QtGui import QTextCharFormat, QColor
-from PyQt6 import QtCore, QtGui, QtWidgets
-import util
-import time
-import file
+from PyQt6.QtGui import QTextCharFormat
+from core import modifyengine
+import util.helper as helper
+import util.filemanger as filemanger
 import logging
-import text
-import enumtypes
+import core.highlightengine as highlightengine
+import util.enumtypes as enumtypes
 import copy
 logger=logging.getLogger(__name__)
 
@@ -25,7 +24,7 @@ class LineNumberArea(QtWidgets.QWidget):
 class DrapDropTextEdit(QtWidgets.QPlainTextEdit):
     def __init__(self, parent=None):
         super(DrapDropTextEdit, self).__init__(parent)
-        self.fileoriginalcontent=""
+        self.originalcontent=""
         self.fileoriginalfullpath=None
         self.setAcceptDrops(True)
         self.setLineWrapMode(QtWidgets.QPlainTextEdit.LineWrapMode.NoWrap)
@@ -41,8 +40,11 @@ class DrapDropTextEdit(QtWidgets.QPlainTextEdit):
         self.editbyuser=True
         self.textmode=enumtypes.TextMode.FROMUSER
         self._translate = QtCore.QCoreApplication.translate
-        self.demandedOriginalDict={}
+        self.originaldict={}
         self.diff_dict={}
+
+        self._highlight_engine=highlightengine.HighLightEngine()
+        self._modify_engine=modifyengine.ModifyEngine()
         
         
     def bindsavebutton(self,button:QtWidgets.QPushButton):
@@ -51,7 +53,7 @@ class DrapDropTextEdit(QtWidgets.QPlainTextEdit):
     def bindlabel(self,label:QtWidgets.QLabel):
         self.label=label
         self.label.setText(self._translate("MainWindow", "手动编辑模式"))
-
+    
     def highlight_modified_lines(self):
         if self.editbyuser==False:
             return 
@@ -61,13 +63,9 @@ class DrapDropTextEdit(QtWidgets.QPlainTextEdit):
         logger.debug(f"text changed:{cursor.block().text()}")
         if line_number not in self.modified_lines:
             self.modified_lines.add(line_number)
-            self.highlight_line(cursor)
+            self._highlight_engine.highlight_user_modified_line(cursor)
             logger.debug(f"highligh a modified line: {cursor.blockNumber()}, line column is: {cursor.columnNumber()}, line content is:{cursor.block().text()}")
-
-    def highlight_line(self, cursor:QtGui.QTextCursor):
-        fmt = QTextCharFormat()
-        fmt.setBackground(QColor(QtCore.Qt.GlobalColor.cyan))  
-        cursor.setCharFormat(fmt)
+    
         
     def dropEvent(self,  e: QtGui.QDropEvent):
         logger.debug("drop event")
@@ -90,16 +88,16 @@ class DrapDropTextEdit(QtWidgets.QPlainTextEdit):
     
     def openfilepath(self,fullpath:str):
         self.editbyuser=False
-        root,ext=util.split_filename(fullpath)
+        root,ext=helper.split_filename(fullpath)
         self.fileoriginalfullpath=fullpath
         if ext.endswith("gz"):
-            self.textfilenameingz,self.fileoriginalcontent=file.load_tgz_to_string(fullpath)
+            self.textfilenameingz,self.originalcontent=filemanger.load_tgz_to_string(fullpath)
             self.setCurrentCharFormat(QTextCharFormat())
-            self.setPlainText(self.fileoriginalcontent)
+            self.setPlainText(self.originalcontent)
         else:
-            self.fileoriginalcontent=file.load_textfile_to_string(fullpath)
+            self.originalcontent=filemanger.load_textfile_to_string(fullpath)
             self.setCurrentCharFormat(QTextCharFormat())
-            self.setPlainText(self.fileoriginalcontent)
+            self.setPlainText(self.originalcontent)
             
         self.savebutton.setEnabled(True)
         self.savebutton.setText(self._translate("MainWindow", f"保存到文件(功能未完成)"))
@@ -115,29 +113,28 @@ class DrapDropTextEdit(QtWidgets.QPlainTextEdit):
         if self.textmode==enumtypes.TextMode.FROMFILE: 
             #直接保存，不会有任何解析
             if self.fileoriginalfullpath.endswith("gz"):
-                file.save_string_to_tgz(content,self.fileoriginalfullpath)
+                filemanger.save_string_to_tgz(content,self.fileoriginalfullpath)
             else:
-                file.save_string_to_textfile(content,self.fileoriginalfullpath)
-            self.fileoriginalcontent=content
+                filemanger.save_string_to_textfile(content,self.fileoriginalfullpath)
+            self.originalcontent=content
             self.setCurrentCharFormat(QTextCharFormat())
-            self.setPlainText(self.fileoriginalcontent)
+            self.setPlainText(self.originalcontent)
         elif self.textmode==enumtypes.TextMode.DIFF:
             try:
                 self.parsedifftomodifycontent()
                 if self.fileoriginalfullpath.endswith("gz"):
-                    file.save_string_to_tgz(self.fileoriginalcontent,self.fileoriginalfullpath,self.textfilenameingz)
+                    filemanger.save_string_to_tgz(self.originalcontent,self.fileoriginalfullpath,self.textfilenameingz)
                 else:
-                    file.save_string_to_textfile(self.fileoriginalcontent,self.fileoriginalfullpath)
-            except file.InvaildInputError as e:
+                    filemanger.save_string_to_textfile(self.originalcontent,self.fileoriginalfullpath)
+            except filemanger.InvaildInputError as e:
                 warning_box=QtWidgets.QMessageBox(QtWidgets.QMessageBox.Icon.Warning,"warning",f"invalid input at line {e}")
                 warning_box.exec()
         else:
             logger.critical(f"unknown textmode:{self.textmode.name}") 
             
     def parsedifftomodifycontent(self):#直接修改fileoriginalcontent
-        newdiffdict=file.parse_diff_string(self.toPlainText())
-
-        self.fileoriginalcontent=file.modify_string_by_diff(self.fileoriginalcontent,file.diff_diff_dict(copy.deepcopy(self.diff_dict), newdiffdict))
+        newdiffdict=helper.parse_diffcontent_todict(self.toPlainText())
+        self.originalcontent=self._modify_engine.modify_string_by_diff(self.originalcontent,filemanger.diff_diff_dict(copy.deepcopy(self.diff_dict), newdiffdict))
         
         
     
@@ -201,7 +198,16 @@ class DrapDropTextEdit(QtWidgets.QPlainTextEdit):
 
         self.setExtraSelections(extraSelections)
         
+    def prepareoriginaldict(self):
+        if self.textmode==enumtypes.TextMode.FROMFILE or self.textmode==enumtypes.TextMode.DIFF:
+            logger.debug(f"using the saved content to compute dict")
+            self.originaldict = helper.parse_string(self.originalcontent)
+        elif self.textmode==enumtypes.TextMode.FROMUSER:
+            logger.debug(f"using the content in window to compute dict")
+            self.originalcontent=self.toPlainText()
+            self.originaldict = helper.parse_string(self.originalcontent)
         
+    '''    
     def output_diff_by_stringindict(self,opponent_dict:dict):
         self.editbyuser=False
         self.clear()
@@ -306,98 +312,9 @@ class DrapDropTextEdit(QtWidgets.QPlainTextEdit):
         self.label.setText(self._translate("MainWindow", f"差异编辑模式: {self.fileoriginalfullpath}"))
         self.editbyuser=True
         
+    '''
+
         
-        
-    def demandingDict(self):
-        if self.textmode==enumtypes.TextMode.FROMFILE or self.textmode==enumtypes.TextMode.DIFF:
-            logger.debug(f"using the saved content to compute dict")
-            self.demandedOriginalDict = file.parse_string(self.fileoriginalcontent)
-        elif self.textmode==enumtypes.TextMode.FROMUSER:
-            logger.debug(f"using the content in window to compute dict")
-            self.demandedOriginalDict = file.parse_string(self.toPlainText())
 
 
-class Ui_MainWindow_2(object):
 
-    def setupUi(self, MainWindow):
-        MainWindow.setObjectName("MainWindow")
-        MainWindow.resize(1124, 901)
-        self.centralwidget = QtWidgets.QWidget(parent=MainWindow)
-        self.centralwidget.setObjectName("centralwidget")
-        self.gridLayout = QtWidgets.QGridLayout(self.centralwidget)
-        self.gridLayout.setObjectName("gridLayout")
-        self.pushButton_2 = QtWidgets.QPushButton(parent=self.centralwidget)
-        self.pushButton_2.setObjectName("pushButton_2")
-        self.gridLayout.addWidget(self.pushButton_2, 2, 2, 1, 1)
-        self.textEdit = DrapDropTextEdit(parent=self.centralwidget)
-        self.textEdit.setMinimumSize(QtCore.QSize(550, 763))
-        self.textEdit.setObjectName("textEdit")
-        self.gridLayout.addWidget(self.textEdit, 1, 0, 1, 2)
-        self.textEdit_2 = DrapDropTextEdit(parent=self.centralwidget)
-        self.textEdit_2.setMinimumSize(QtCore.QSize(550, 763))
-        self.textEdit_2.setObjectName("textEdit_2")
-        self.gridLayout.addWidget(self.textEdit_2, 1, 2, 1, 2)
-        self.pushButton_3 = QtWidgets.QPushButton(parent=self.centralwidget)
-        self.pushButton_3.setObjectName("pushButton_3")
-        self.gridLayout.addWidget(self.pushButton_3, 3, 0, 1, 4)
-        self.pushButton_5 = QtWidgets.QPushButton(parent=self.centralwidget)
-        self.pushButton_5.setObjectName("pushButton_5")
-        self.gridLayout.addWidget(self.pushButton_5, 2, 3, 1, 1)
-        self.pushButton = QtWidgets.QPushButton(parent=self.centralwidget)
-        self.pushButton.setObjectName("pushButton")
-        self.gridLayout.addWidget(self.pushButton, 2, 0, 1, 1)
-        self.label_2 = QtWidgets.QLabel(parent=self.centralwidget)
-        self.label_2.setObjectName("label_2")
-        self.gridLayout.addWidget(self.label_2, 0, 2, 1, 1)
-        self.pushButton_4 = QtWidgets.QPushButton(parent=self.centralwidget)
-        self.pushButton_4.setObjectName("pushButton_4")
-        self.gridLayout.addWidget(self.pushButton_4, 2, 1, 1, 1)
-        self.label = QtWidgets.QLabel(parent=self.centralwidget)
-        self.label.setObjectName("label")
-        self.gridLayout.addWidget(self.label, 0, 0, 1, 1)
-        MainWindow.setCentralWidget(self.centralwidget)
-        self.statusbar = QtWidgets.QStatusBar(parent=MainWindow)
-        self.statusbar.setObjectName("statusbar")
-        MainWindow.setStatusBar(self.statusbar)
-        self.menubar = QtWidgets.QMenuBar(parent=MainWindow)
-        self.menubar.setGeometry(QtCore.QRect(0, 0, 1124, 21))
-        self.menubar.setObjectName("menubar")
-        MainWindow.setMenuBar(self.menubar)
-        
-        
-        self.pushButton_3.clicked.connect(self.refresh_diff)
-        self.pushButton.clicked.connect(self.textEdit.uploadfile)
-        self.textEdit_2.bindsavebutton(self.pushButton_5)
-        self.textEdit.bindsavebutton(self.pushButton_4)
-        self.textEdit.bindlabel(self.label)
-        self.textEdit_2.bindlabel(self.label_2)
-        self.pushButton_2.clicked.connect(self.textEdit_2.uploadfile)
-        self.pushButton_4.clicked.connect(self.textEdit.savecurrenttextintofile)
-        self.pushButton_4.setEnabled(False)
-        self.pushButton_5.clicked.connect(self.textEdit_2.savecurrenttextintofile)  
-        self.pushButton_5.setEnabled(False)
-        
-        self.retranslateUi(MainWindow)
-        QtCore.QMetaObject.connectSlotsByName(MainWindow)
-
-    def retranslateUi(self, MainWindow):
-        _translate = QtCore.QCoreApplication.translate
-        MainWindow.setWindowTitle(_translate("MainWindow", "MainWindow"))
-        self.pushButton_3.setText(_translate("MainWindow", "刷新差异"))
-        self.pushButton_5.setText(_translate("MainWindow", "保存"))
-        self.pushButton_2.setText(_translate("MainWindow", "导入"))
-        self.pushButton.setText(_translate("MainWindow", "导入"))
-        self.pushButton_4.setText(_translate("MainWindow", "保存"))
-        self.label_2.setText(_translate("MainWindow", "编辑模式"))
-        self.label.setText(_translate("MainWindow", "编辑模式"))
-        
-    def refresh_diff(self):
-        try:
-            self.textEdit.demandingDict()
-            self.textEdit_2.demandingDict()
-            self.textEdit_2.output_diff_by_stringindict(copy.deepcopy(self.textEdit.demandedOriginalDict))
-            self.textEdit.output_diff_by_stringindict(copy.deepcopy(self.textEdit_2.demandedOriginalDict))
-            logging.debug(f"debug demandingdict{self.textEdit.demandedOriginalDict}")
-        except file.InvaildInputError as e:
-            warning_box=QtWidgets.QMessageBox(QtWidgets.QMessageBox.Icon.Warning,"warning",f"invalid input at line {e}")
-            warning_box.exec()
