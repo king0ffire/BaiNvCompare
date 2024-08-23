@@ -1,6 +1,6 @@
 from PyQt6.QtGui import QTextCharFormat, QColor
 from PyQt6 import QtWidgets, QtCore, QtGui
-import enumerate
+import enumtypes
 import logging
 
 logger = logging.getLogger(__name__)
@@ -90,7 +90,7 @@ def highlight_text(text_edit: QtWidgets.QTextEdit, comparison_result):
             if current_section is not None:
                 for key, status in comparison_result[current_section].items():
                     logger.debug(f"section:{current_section},key:{key},status:{status}")
-                    if status[0] == enumerate.DiffType.REMOVED:
+                    if status[0] == enumtypes.DiffType.REMOVED:
                         cursor.insertText(f"missing:{key}={status[1]}\n",red_format)
                         logger.debug(f"missing:{key}={status[1]}")
                 del comparison_result[current_section]
@@ -106,18 +106,18 @@ def highlight_text(text_edit: QtWidgets.QTextEdit, comparison_result):
             if key in comparison_result[current_section]:
                 if (
                     comparison_result[current_section][key][0]
-                    == enumerate.DiffType.REMOVED
+                    == enumtypes.DiffType.REMOVED
                 ):
                     logger.critical(f"Key {key} found in comparison")
                 elif (
                     comparison_result[current_section][key][0]
-                    == enumerate.DiffType.ADDED
+                    == enumtypes.DiffType.ADDED
                 ):
                     highlight_line(cursor, green_format)
                     logger.debug(f"{key} change to green")
                 elif (
                     comparison_result[current_section][key][0]
-                    == enumerate.DiffType.MODIFIED
+                    == enumtypes.DiffType.MODIFIED
                 ):
                     logger.debug(
                         f"cursor selection:{cursor.hasSelection()},cursor line:{cursor.blockNumber()},cursor position:{cursor.positionInBlock()},cursor block content:{cursor.block().text()}"
@@ -136,7 +136,7 @@ def highlight_text(text_edit: QtWidgets.QTextEdit, comparison_result):
     if current_section is not None:
         for key, status in comparison_result[current_section].items():
             logger.debug(f"section:{current_section},key:{key},status:{status}")
-            if status[0] == enumerate.DiffType.REMOVED:
+            if status[0] == enumtypes.DiffType.REMOVED:
                 cursor.insertText(f"missing:{key}={status[1]}\n",red_format)
                 logger.debug(f"missing:{key}={status[1]}")
         del comparison_result[current_section]
@@ -156,7 +156,7 @@ def highlight_text(text_edit: QtWidgets.QTextEdit, comparison_result):
         logger.debug(f"currrent missing section:[{missing_section}]")
         for key, status in comparison_result[missing_section].items():
             logger.debug(f"=========missing start=========")
-            if status[0] == enumerate.DiffType.REMOVED:
+            if status[0] == enumtypes.DiffType.REMOVED:
                 logger.debug(
                     f"cursor position:{cursor.position()},cursor block content:{cursor.block().text()}"
                 )
@@ -218,7 +218,7 @@ def highlight_text_opposite(text_edit: QtWidgets.QTextEdit, comparison_result):
             if current_section is not None:
                 for key, status in comparison_result[current_section].items():
                     logger.debug(f"section:{current_section},key:{key},status:{status}")
-                    if status[0] == enumerate.DiffType.REMOVED:
+                    if status[0] == enumtypes.DiffType.REMOVED:
                         cursor.insertText(f"missing:{key}={status[1]}\n",red_format)
                         logger.debug(f"missing:{key}={status[1]}")
                 del comparison_result[current_section]
@@ -234,18 +234,18 @@ def highlight_text_opposite(text_edit: QtWidgets.QTextEdit, comparison_result):
             if key in comparison_result[current_section]:
                 if (
                     comparison_result[current_section][key][0]
-                    == enumerate.DiffType.ADDED
+                    == enumtypes.DiffType.ADDED
                 ):
                     logger.critical(f"Key {key} found in comparison")
                 elif (
                     comparison_result[current_section][key][0]
-                    == enumerate.DiffType.REMOVED
+                    == enumtypes.DiffType.REMOVED
                 ):
                     highlight_line(cursor, green_format)
                     logger.debug(f"{key} change to green")
                 elif (
                     comparison_result[current_section][key][0]
-                    == enumerate.DiffType.MODIFIED
+                    == enumtypes.DiffType.MODIFIED
                 ):
                     logger.debug(
                         f"cursor selection:{cursor.hasSelection()},cursor line:{cursor.blockNumber()},cursor position:{cursor.positionInBlock()},cursor block content:{cursor.block().text()}"
@@ -264,7 +264,7 @@ def highlight_text_opposite(text_edit: QtWidgets.QTextEdit, comparison_result):
     if current_section is not None:
         for key, status in comparison_result[current_section].items():
             logger.debug(f"section:{current_section},key:{key},status:{status}")
-            if status[0] == enumerate.DiffType.REMOVED:
+            if status[0] == enumtypes.DiffType.REMOVED:
                 cursor.insertText(f"missing:{key}={status[1]}\n",red_format)
                 logger.debug(f"missing:{key}={status[1]}")
         del comparison_result[current_section]
@@ -284,7 +284,7 @@ def highlight_text_opposite(text_edit: QtWidgets.QTextEdit, comparison_result):
         logger.debug(f"currrent missing section:[{missing_section}]")
         for key, status in comparison_result[missing_section].items():
             logger.debug(f"=========missing start=========")
-            if status[0] == enumerate.DiffType.REMOVED:
+            if status[0] == enumtypes.DiffType.REMOVED:
                 logger.debug(
                     f"cursor position:{cursor.position()},cursor block content:{cursor.block().text()}"
                 )

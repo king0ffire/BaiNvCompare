@@ -1,11 +1,13 @@
 from PyQt6 import QtWidgets,QtCore,QtGui
 from PyQt6.QtGui import QTextCharFormat, QColor
+from PyQt6 import QtCore, QtGui, QtWidgets
 import util
 import time
 import file
 import logging
 import text
-import enumerate
+import enumtypes
+import copy
 logger=logging.getLogger(__name__)
 
 class LineNumberArea(QtWidgets.QWidget):
@@ -36,8 +38,23 @@ class DrapDropTextEdit(QtWidgets.QPlainTextEdit):
         self.updateLineNumberAreaWidth()
         #self.highlightCurrentLine()
         self.modified_lines = set()
+        self.editbyuser=True
+        self.textmode=enumtypes.TextMode.FROMUSER
+        self._translate = QtCore.QCoreApplication.translate
+        self.demandedOriginalDict={}
+        self.diff_dict={}
+        
+        
+    def bindsavebutton(self,button:QtWidgets.QPushButton):
+        self.savebutton=button
+        
+    def bindlabel(self,label:QtWidgets.QLabel):
+        self.label=label
+        self.label.setText(self._translate("MainWindow", "手动编辑模式"))
 
     def highlight_modified_lines(self):
+        if self.editbyuser==False:
+            return 
         cursor = self.textCursor()
         cursor.select(cursor.SelectionType.LineUnderCursor)
         line_number = cursor.blockNumber()
@@ -51,8 +68,6 @@ class DrapDropTextEdit(QtWidgets.QPlainTextEdit):
         fmt = QTextCharFormat()
         fmt.setBackground(QColor(QtCore.Qt.GlobalColor.cyan))  
         cursor.setCharFormat(fmt)
-
-        
         
     def dropEvent(self,  e: QtGui.QDropEvent):
         logger.debug("drop event")
@@ -65,6 +80,7 @@ class DrapDropTextEdit(QtWidgets.QPlainTextEdit):
                 
     def uploadfile(self):
         logger.debug(f"test read file")
+        self.modified_lines = set()
         file_name,file2=QtWidgets.QFileDialog.getOpenFileName(self, "Open tgz and text file", "", "All Files (*)")
         if file_name=="":
             return
@@ -73,29 +89,58 @@ class DrapDropTextEdit(QtWidgets.QPlainTextEdit):
         self.openfilepath(file_name)
     
     def openfilepath(self,fullpath:str):
+        self.editbyuser=False
         root,ext=util.split_filename(fullpath)
         self.fileoriginalfullpath=fullpath
         if ext.endswith("gz"):
-            self.fileoriginalcontent=file.load_tgz_to_string(fullpath)
+            self.textfilenameingz,self.fileoriginalcontent=file.load_tgz_to_string(fullpath)
             self.setCurrentCharFormat(QTextCharFormat())
             self.setPlainText(self.fileoriginalcontent)
         else:
             self.fileoriginalcontent=file.load_textfile_to_string(fullpath)
             self.setCurrentCharFormat(QTextCharFormat())
             self.setPlainText(self.fileoriginalcontent)
+            
+        self.savebutton.setEnabled(True)
+        self.savebutton.setText(self._translate("MainWindow", f"保存到文件(功能未完成)"))
+        self.textmode=enumtypes.TextMode.FROMFILE
+        self.label.setText(self._translate("MainWindow", f"文件编辑模式: {self.fileoriginalfullpath}"))
+        self.editbyuser=True
                     
     def savecurrenttextintofile(self):
         if self.fileoriginalfullpath is None:
+            logger.critical(f"undefined save action")
             return
         content = self.toPlainText()
-        if self.fileoriginalfullpath.endswith("gz"):
-            file.save_string_to_tgz(content,self.fileoriginalfullpath)
+        if self.textmode==enumtypes.TextMode.FROMFILE: 
+            #直接保存，不会有任何解析
+            if self.fileoriginalfullpath.endswith("gz"):
+                file.save_string_to_tgz(content,self.fileoriginalfullpath)
+            else:
+                file.save_string_to_textfile(content,self.fileoriginalfullpath)
+            self.fileoriginalcontent=content
+            self.setCurrentCharFormat(QTextCharFormat())
+            self.setPlainText(self.fileoriginalcontent)
+        elif self.textmode==enumtypes.TextMode.DIFF:
+            try:
+                self.parsedifftomodifycontent()
+                if self.fileoriginalfullpath.endswith("gz"):
+                    file.save_string_to_tgz(self.fileoriginalcontent,self.fileoriginalfullpath,self.textfilenameingz)
+                else:
+                    file.save_string_to_textfile(self.fileoriginalcontent,self.fileoriginalfullpath)
+            except file.InvaildInputError as e:
+                warning_box=QtWidgets.QMessageBox(QtWidgets.QMessageBox.Icon.Warning,"warning",f"invalid input at line {e}")
+                warning_box.exec()
         else:
-            file.save_string_to_textfile(content,self.fileoriginalfullpath)
-        self.fileoriginalcontent=content
-        self.setCurrentCharFormat(QTextCharFormat())
-        self.setPlainText(self.fileoriginalcontent)
+            logger.critical(f"unknown textmode:{self.textmode.name}") 
+            
+    def parsedifftomodifycontent(self):#直接修改fileoriginalcontent
+        newdiffdict=file.parse_diff_string(self.toPlainText())
 
+        self.fileoriginalcontent=file.modify_string_by_diff(self.fileoriginalcontent,file.diff_diff_dict(copy.deepcopy(self.diff_dict), newdiffdict))
+        
+        
+    
     def lineNumberAreaWidth(self):
         digits = len(str(self.document().blockCount())) + 1
         space = 3 + self.fontMetrics().horizontalAdvance('9') * digits
@@ -147,7 +192,6 @@ class DrapDropTextEdit(QtWidgets.QPlainTextEdit):
 
         if not self.isReadOnly():
             selection = QtWidgets.QPlainTextEdit.ExtraSelection()
-
             lineColor =QtGui.QColor(QtCore.Qt.GlobalColor.yellow).lighter(160)
             selection.format.setBackground(lineColor)
             selection.format.setProperty(QtGui.QTextFormat.TextUnderlineStyle, QtWidgets.QTextFormat.UnderlineStyle.NoUnderline)
@@ -156,82 +200,125 @@ class DrapDropTextEdit(QtWidgets.QPlainTextEdit):
             extraSelections.append(selection)
 
         self.setExtraSelections(extraSelections)
-
-class Ui_MainWindow(object):
-    def setupUi(self, MainWindow):
-        MainWindow.setObjectName("MainWindow")
-        MainWindow.resize(1124, 901)
-        self.centralwidget = QtWidgets.QWidget(parent=MainWindow)
-        self.centralwidget.setObjectName("centralwidget")
-
-        
-        self.textEdit = DrapDropTextEdit(parent=self.centralwidget)
-        self.textEdit.setGeometry(QtCore.QRect(0, 0, 511, 821))
-        self.textEdit.setObjectName("textEdit")
-        self.textEdit_2 = DrapDropTextEdit(parent=self.centralwidget)
-        self.textEdit_2.setGeometry(QtCore.QRect(610, 0, 511, 821))
-        self.textEdit_2.setObjectName("textEdit_2")
         
         
-        self.pushButton = QtWidgets.QPushButton(parent=self.centralwidget)
-        self.pushButton.setGeometry(QtCore.QRect(220, 830, 75, 23))
-        self.pushButton.setObjectName("pushButton")        
-        self.pushButton_2 = QtWidgets.QPushButton(parent=self.centralwidget)
-        self.pushButton_2.setGeometry(QtCore.QRect(840, 830, 75, 23))
-        self.pushButton_2.setObjectName("pushButton_2")
-        self.pushButton_3 = QtWidgets.QPushButton(parent=self.centralwidget)
-        self.pushButton_3.setGeometry(QtCore.QRect(520, 360, 75, 23))
-        self.pushButton_3.setObjectName("pushButton_3")
-        self.pushButton_3.clicked.connect(self.refresh_diff)
+    def output_diff_by_stringindict(self,opponent_dict:dict):
+        self.editbyuser=False
+        self.clear()
+        self.diff_dict={}
+        green_format = QTextCharFormat()
+        green_format.setBackground(QColor("green"))
+        yellow_format = QTextCharFormat()
+        yellow_format.setBackground(QColor("yellow"))
+        red_format = QTextCharFormat()
+        red_format.setBackground(QColor("red"))
+        normal_format = QTextCharFormat()
+        
+        logger.info("start compare diff by string")
+        if self.fileoriginalfullpath is None:
+            content=self.toPlainText()
+        else:
+            content=self.fileoriginalcontent
+        lines=content.split('\n')
+        current_section=None
+        self.diff_dict[current_section]={}
+        sectionhasdifference=False
+        cursor=self.textCursor()
+        for line in lines:
+            line=line.strip()
+            logger.debug(f"line has {line}; section has value:{sectionhasdifference}")
+            if line.startswith('[') and line.endswith(']'):
+                if current_section in opponent_dict:
+                    for key,value in opponent_dict[current_section].items():
+                        logger.debug(f"missing section:{current_section},key:{key},value:{value}")
+                        cursor.insertText(f"missing:{key} = {value}\n",red_format)
+                        self.diff_dict[current_section][key]=(value,enumtypes.DiffType.REMOVED)
+                    del opponent_dict[current_section]            
+                if sectionhasdifference == False:
+                    cursor.movePosition(QtGui.QTextCursor.MoveOperation.PreviousBlock,cursor.MoveMode.KeepAnchor)
+                    logger.debug(f"clearing {cursor.block().text()}")
+                    cursor.removeSelectedText()
+                    logger.debug(f"after clearing {cursor.block().text()}")
+                current_section=line[1:-1]
+                logger.debug(f"current section={current_section}")
+                self.diff_dict[current_section]={}
+                sectionhasdifference=False
+                logger.debug(f"new section:{current_section}")
+                cursor.insertText(f"{line}\n",normal_format) 
+            elif '=' in line:             
+                key,value =line.split('=',1)
+                key=key.strip()
+                value=value.strip()
+                if current_section in opponent_dict and key in opponent_dict[current_section]:
+                    if value!=opponent_dict[current_section][key]:
+                        logger.debug(f"insert yellow: section:{current_section},key:{key},value:{value}")
+                        cursor.insertText(f"{line}\n",yellow_format)
+                        self.diff_dict[current_section][key]=(value,enumtypes.DiffType.MODIFIED)
+                        sectionhasdifference=True
+                    del opponent_dict[current_section][key]
+                else:
+                    logger.debug(f"insert green: section:{current_section},key:{key},value:{value}")
+                    cursor.insertText(f"{line}\n",green_format)
+                    self.diff_dict[current_section][key]=(value,enumtypes.DiffType.ADDED)
+                    sectionhasdifference=True
+        if current_section in opponent_dict:
+            for key,value in opponent_dict[current_section].items():
+                logger.debug(f"missing section:{current_section},key:{key},value:{value}")
+                cursor.insertText(f"missing:{key} = {value}\n",red_format)
+                self.diff_dict[current_section][key]=(value,enumtypes.DiffType.REMOVED)
+            del opponent_dict[current_section]            
+        if sectionhasdifference == False:
+            cursor.movePosition(QtGui.QTextCursor.MoveOperation.PreviousBlock,cursor.MoveMode.KeepAnchor)
+            logger.debug(f"clearing {cursor.block().text()}")
+            cursor.removeSelectedText()
+            logger.debug(f"after clearing {cursor.block().text()}")
+        current_section = None
         
         
-        MainWindow.setCentralWidget(self.centralwidget)
-        self.menubar = QtWidgets.QMenuBar(parent=MainWindow)
-        self.menubar.setGeometry(QtCore.QRect(0, 0, 1124, 21))
-        self.menubar.setObjectName("menubar")
-        self.menuFile = QtWidgets.QMenu(parent=self.menubar)
-        self.menuFile.setObjectName("menuFile")
-        MainWindow.setMenuBar(self.menubar)
-        self.statusbar = QtWidgets.QStatusBar(parent=MainWindow)
-        self.statusbar.setObjectName("statusbar")
-        MainWindow.setStatusBar(self.statusbar)
-        self.menubar.addAction(self.menuFile.menuAction())
-
-        self.retranslateUi(MainWindow)
-        QtCore.QMetaObject.connectSlotsByName(MainWindow)
-
-    def retranslateUi(self, MainWindow):
-        _translate = QtCore.QCoreApplication.translate
-        MainWindow.setWindowTitle(_translate("MainWindow", "MainWindow"))
-        self.pushButton.setText(_translate("MainWindow", "保存"))
-        self.pushButton_2.setText(_translate("MainWindow", "保存"))
-        self.pushButton_3.setText(_translate("MainWindow", "刷新差异"))
-        self.menuFile.setTitle(_translate("MainWindow", "File"))
-    '''  
-    def refresh_diff(self):
-        self.textEdit.setPlainText(self.textEdit.fileoriginalcontent)
-        self.textEdit_2.setPlainText(self.textEdit_2.fileoriginalcontent)   
-        filedict1=file.parse_string(self.textEdit.toPlainText())
-        filedict2=file.parse_string(self.textEdit_2.toPlainText())
-        result=file.compare_diff_dict_2comparedto1(filedict1,filedict2)
-        text.highlight_text(self.textEdit_2,result.copy())
-        text.highlight_text_opposite(self.textEdit,result.copy())
-        self.textEdit_2.viewport().update()
-        self.textEdit_2.repaint()
-    '''  
-    def refresh_diff(self):
-        filedict1=file.parse_string(self.textEdit.fileoriginalcontent)
-        filedict2=file.parse_string(self.textEdit_2.fileoriginalcontent)
-        output_diff_by_stringindict(self.textEdit_2,filedict1)
-        output_diff_by_stringindict(self.textEdit,filedict2)
+        logger.debug(f"missing sections:{opponent_dict}")
+        cursor.movePosition(cursor.MoveOperation.End,cursor.MoveMode.MoveAnchor)
+        logger.debug(
+            f"cursor line number:{cursor.block().lineCount()},cursor block content:{cursor.block().text()}"
+        )
+        for missing_section in opponent_dict:
+            logger.debug(
+                f"cursor position:{cursor.position()},cursor block content:{cursor.block().text()}"
+            )
+            cursor.insertText(f"missing section:[{missing_section}]\n",red_format)
+            current_section=missing_section
+            self.diff_dict[missing_section]={}
+            logger.debug(f"currrent missing section:[{missing_section}]")
+            for key, value in opponent_dict[missing_section].items():
+                logger.debug(f"=========missing start=========")
+                logger.debug(
+                    f"cursor position:{cursor.position()},cursor block content:{cursor.block().text()}"
+                )
+                cursor.insertText(f"missing:{key} = {value}\n",red_format)
+                self.diff_dict[current_section][key]=(value,enumtypes.DiffType.REMOVED)
+                logger.debug(
+                    f"cursor position:{cursor.position()},cursor block content:{cursor.block().text()}"
+                )
+                logger.debug(f"=========missing stop=========")
+                
+        logger.debug("switch to DIFF MODE") 
+        self.textmode=enumtypes.TextMode.DIFF
+        self.savebutton.setText(self._translate("MainWindow", f"同步差异到文件(功能未完成)"))
+        self.label.setText(self._translate("MainWindow", f"差异编辑模式: {self.fileoriginalfullpath}"))
+        self.editbyuser=True
         
         
         
-        
-from PyQt6 import QtCore, QtGui, QtWidgets
+    def demandingDict(self):
+        if self.textmode==enumtypes.TextMode.FROMFILE or self.textmode==enumtypes.TextMode.DIFF:
+            logger.debug(f"using the saved content to compute dict")
+            self.demandedOriginalDict = file.parse_string(self.fileoriginalcontent)
+        elif self.textmode==enumtypes.TextMode.FROMUSER:
+            logger.debug(f"using the content in window to compute dict")
+            self.demandedOriginalDict = file.parse_string(self.toPlainText())
 
 
 class Ui_MainWindow_2(object):
+
     def setupUi(self, MainWindow):
         MainWindow.setObjectName("MainWindow")
         MainWindow.resize(1124, 901)
@@ -239,29 +326,35 @@ class Ui_MainWindow_2(object):
         self.centralwidget.setObjectName("centralwidget")
         self.gridLayout = QtWidgets.QGridLayout(self.centralwidget)
         self.gridLayout.setObjectName("gridLayout")
-        self.pushButton_3 = QtWidgets.QPushButton(parent=self.centralwidget)
-        self.pushButton_3.setObjectName("pushButton_3")
-        self.gridLayout.addWidget(self.pushButton_3, 2, 0, 1, 4)
-        self.pushButton_5 = QtWidgets.QPushButton(parent=self.centralwidget)
-        self.pushButton_5.setObjectName("pushButton_5")
-        self.gridLayout.addWidget(self.pushButton_5, 1, 3, 1, 1)
         self.pushButton_2 = QtWidgets.QPushButton(parent=self.centralwidget)
         self.pushButton_2.setObjectName("pushButton_2")
-        self.gridLayout.addWidget(self.pushButton_2, 1, 2, 1, 1)
-        self.textEdit_2 = DrapDropTextEdit(parent=self.centralwidget)    
-        self.textEdit_2.setMinimumSize(QtCore.QSize(550, 784))
-        self.textEdit_2.setObjectName("textEdit_2")
-        self.gridLayout.addWidget(self.textEdit_2, 0, 2, 1, 2)
-        self.pushButton = QtWidgets.QPushButton(parent=self.centralwidget)  
-        self.pushButton.setObjectName("pushButton")
-        self.gridLayout.addWidget(self.pushButton, 1, 0, 1, 1)
-        self.textEdit = DrapDropTextEdit(parent=self.centralwidget)      
-        self.textEdit.setMinimumSize(QtCore.QSize(550, 784))
+        self.gridLayout.addWidget(self.pushButton_2, 2, 2, 1, 1)
+        self.textEdit = DrapDropTextEdit(parent=self.centralwidget)
+        self.textEdit.setMinimumSize(QtCore.QSize(550, 763))
         self.textEdit.setObjectName("textEdit")
-        self.gridLayout.addWidget(self.textEdit, 0, 0, 1, 2)
+        self.gridLayout.addWidget(self.textEdit, 1, 0, 1, 2)
+        self.textEdit_2 = DrapDropTextEdit(parent=self.centralwidget)
+        self.textEdit_2.setMinimumSize(QtCore.QSize(550, 763))
+        self.textEdit_2.setObjectName("textEdit_2")
+        self.gridLayout.addWidget(self.textEdit_2, 1, 2, 1, 2)
+        self.pushButton_3 = QtWidgets.QPushButton(parent=self.centralwidget)
+        self.pushButton_3.setObjectName("pushButton_3")
+        self.gridLayout.addWidget(self.pushButton_3, 3, 0, 1, 4)
+        self.pushButton_5 = QtWidgets.QPushButton(parent=self.centralwidget)
+        self.pushButton_5.setObjectName("pushButton_5")
+        self.gridLayout.addWidget(self.pushButton_5, 2, 3, 1, 1)
+        self.pushButton = QtWidgets.QPushButton(parent=self.centralwidget)
+        self.pushButton.setObjectName("pushButton")
+        self.gridLayout.addWidget(self.pushButton, 2, 0, 1, 1)
+        self.label_2 = QtWidgets.QLabel(parent=self.centralwidget)
+        self.label_2.setObjectName("label_2")
+        self.gridLayout.addWidget(self.label_2, 0, 2, 1, 1)
         self.pushButton_4 = QtWidgets.QPushButton(parent=self.centralwidget)
         self.pushButton_4.setObjectName("pushButton_4")
-        self.gridLayout.addWidget(self.pushButton_4, 1, 1, 1, 1)
+        self.gridLayout.addWidget(self.pushButton_4, 2, 1, 1, 1)
+        self.label = QtWidgets.QLabel(parent=self.centralwidget)
+        self.label.setObjectName("label")
+        self.gridLayout.addWidget(self.label, 0, 0, 1, 1)
         MainWindow.setCentralWidget(self.centralwidget)
         self.statusbar = QtWidgets.QStatusBar(parent=MainWindow)
         self.statusbar.setObjectName("statusbar")
@@ -270,11 +363,20 @@ class Ui_MainWindow_2(object):
         self.menubar.setGeometry(QtCore.QRect(0, 0, 1124, 21))
         self.menubar.setObjectName("menubar")
         MainWindow.setMenuBar(self.menubar)
+        
+        
         self.pushButton_3.clicked.connect(self.refresh_diff)
         self.pushButton.clicked.connect(self.textEdit.uploadfile)
+        self.textEdit_2.bindsavebutton(self.pushButton_5)
+        self.textEdit.bindsavebutton(self.pushButton_4)
+        self.textEdit.bindlabel(self.label)
+        self.textEdit_2.bindlabel(self.label_2)
         self.pushButton_2.clicked.connect(self.textEdit_2.uploadfile)
         self.pushButton_4.clicked.connect(self.textEdit.savecurrenttextintofile)
+        self.pushButton_4.setEnabled(False)
         self.pushButton_5.clicked.connect(self.textEdit_2.savecurrenttextintofile)  
+        self.pushButton_5.setEnabled(False)
+        
         self.retranslateUi(MainWindow)
         QtCore.QMetaObject.connectSlotsByName(MainWindow)
 
@@ -286,95 +388,16 @@ class Ui_MainWindow_2(object):
         self.pushButton_2.setText(_translate("MainWindow", "导入"))
         self.pushButton.setText(_translate("MainWindow", "导入"))
         self.pushButton_4.setText(_translate("MainWindow", "保存"))
-        
+        self.label_2.setText(_translate("MainWindow", "编辑模式"))
+        self.label.setText(_translate("MainWindow", "编辑模式"))
         
     def refresh_diff(self):
-        filedict1=file.parse_string(self.textEdit.fileoriginalcontent)
-        filedict2=file.parse_string(self.textEdit_2.fileoriginalcontent)
-        output_diff_by_stringindict(self.textEdit_2,filedict1)
-        output_diff_by_stringindict(self.textEdit,filedict2)
-        
-def output_diff_by_stringindict(textedit:QtWidgets.QPlainTextEdit,opponent_dict:dict):
-    textedit.clear()
-    green_format = QTextCharFormat()
-    green_format.setBackground(QColor("green"))
-
-    yellow_format = QTextCharFormat()
-    yellow_format.setBackground(QColor("yellow"))
-
-    red_format = QTextCharFormat()
-    red_format.setBackground(QColor("red"))
-    
-    normal_format = QTextCharFormat()
-    
-    logger.info("start compare diff by string")
-    content=textedit.fileoriginalcontent
-    lines=content.split('\n')
-    current_section=None
-    sectionhasdifference=False
-    cursor=textedit.textCursor()
-    for line in lines:
-        logger.debug(f"line has {line}; section has value:{sectionhasdifference}")
-        if line.startswith('[') and line.endswith(']'):
-            if current_section in opponent_dict:
-                for key,value in opponent_dict[current_section].items():
-                    logger.debug(f"missing section:{current_section},key:{key},value:{value}")
-                    cursor.insertText(f"missing:{key}:{value}\n",red_format)
-                del opponent_dict[current_section]            
-            if sectionhasdifference == False:
-                cursor.movePosition(QtGui.QTextCursor.MoveOperation.PreviousBlock,cursor.MoveMode.KeepAnchor)
-                logger.debug(f"clearing {cursor.block().text()}")
-                cursor.removeSelectedText()
-                logger.debug(f"after clearing {cursor.block().text()}")
-            current_section=line[1:-1]
-            sectionhasdifference=False
-            logger.debug(f"new section:{current_section}")
-            cursor.insertText(f"{line}\n",normal_format) 
-        elif '=' in line:             
-            key,value =line.split('=',1)
-            key=key.strip()
-            value=value.strip()
-            if current_section in opponent_dict and key in opponent_dict[current_section]:
-                if value!=opponent_dict[current_section][key]:
-                    logger.debug(f"insert yellow: section:{current_section},key:{key},value:{value}")
-                    cursor.insertText(f"{line}\n",yellow_format)
-                    sectionhasdifference=True
-                del opponent_dict[current_section][key]
-            else:
-                logger.debug(f"insert green: section:{current_section},key:{key},value:{value}")
-                cursor.insertText(f"{line}\n",green_format)
-                sectionhasdifference=True
-    if current_section in opponent_dict:
-        for key,value in opponent_dict[current_section].items():
-            logger.debug(f"missing section:{current_section},key:{key},value:{value}")
-            cursor.insertText(f"missing:{key}:{value}\n",red_format)
-        del opponent_dict[current_section]            
-    if sectionhasdifference == False:
-        cursor.movePosition(QtGui.QTextCursor.MoveOperation.PreviousBlock,cursor.MoveMode.KeepAnchor)
-        logger.debug(f"clearing {cursor.block().text()}")
-        cursor.removeSelectedText()
-        logger.debug(f"after clearing {cursor.block().text()}")
-    current_section = None
-    
-    
-    logger.debug(f"missing sections:{opponent_dict}")
-    cursor.movePosition(cursor.MoveOperation.End,cursor.MoveMode.MoveAnchor)
-    logger.debug(
-        f"cursor line number:{cursor.block().lineCount()},cursor block content:{cursor.block().text()}"
-    )
-    for missing_section in opponent_dict:
-        logger.debug(
-            f"cursor position:{cursor.position()},cursor block content:{cursor.block().text()}"
-        )
-        cursor.insertText(f"missing section:[{missing_section}]\n",red_format)
-        logger.debug(f"currrent missing section:[{missing_section}]")
-        for key, value in opponent_dict[missing_section].items():
-            logger.debug(f"=========missing start=========")
-            logger.debug(
-                f"cursor position:{cursor.position()},cursor block content:{cursor.block().text()}"
-            )
-            cursor.insertText(f"missing:{key}:{value}\n",red_format)
-            logger.debug(
-                f"cursor position:{cursor.position()},cursor block content:{cursor.block().text()}"
-            )
-            logger.debug(f"=========missing stop=========")
+        try:
+            self.textEdit.demandingDict()
+            self.textEdit_2.demandingDict()
+            self.textEdit_2.output_diff_by_stringindict(copy.deepcopy(self.textEdit.demandedOriginalDict))
+            self.textEdit.output_diff_by_stringindict(copy.deepcopy(self.textEdit_2.demandedOriginalDict))
+            logging.debug(f"debug demandingdict{self.textEdit.demandedOriginalDict}")
+        except file.InvaildInputError as e:
+            warning_box=QtWidgets.QMessageBox(QtWidgets.QMessageBox.Icon.Warning,"warning",f"invalid input at line {e}")
+            warning_box.exec()
