@@ -84,7 +84,7 @@ def modify_str_by_dict(content: str, modifydict: dict[str, dict[str]]) -> str:
             else:
                 logger.debug(f"no modification needed for section:{current_section}")
             current_section = stripedline[1:-1]
-            logger.debug(f"new section:{current_section}")
+            logger.debug(f"next section:{current_section}")
             result.append(f"{line}")
         elif "=" in stripedline:
             key, value = stripedline.split("=", 1)

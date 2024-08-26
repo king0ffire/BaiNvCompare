@@ -28,17 +28,17 @@ class DiffEngine:
                     logger.debug(
                         f"insert green: section:{section},key:{key},value:{status[0]}"
                     )
-                    insert_handle(f"{key}= {status[0]}\n", green_format)
+                    insert_handle(f"{key} = {status[0]}\n", green_format)
                 elif status[1] == enumtypes.DiffType.REMOVED:
                     logger.debug(
                         f"insert red: section:{section},key:{key},value:{status[0]}"
                     )
-                    insert_handle(f"missing:{key}= {status[0]}\n", red_format)
+                    insert_handle(f"missing:{key} = {status[0]}\n", red_format)
                 elif status[1] == enumtypes.DiffType.MODIFIED:
                     logger.debug(
                         f"insert yellow: section:{section},key:{key},value:{status[0]}"
                     )
-                    insert_handle(f"{key}= {status[0]}\n", yellow_format)
+                    insert_handle(f"{key} = {status[0]}\n", yellow_format)
 
     """
     def output_diff_by_stringindict(

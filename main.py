@@ -31,7 +31,7 @@ def uncaught_exception(exctype, value, tb):
     logger.error("Uncaught exception", exc_info=(exctype, value, tb))
     queuelistener.stop()
     sys.__excepthook__(exctype, value, tb)
-    exit(1)
+    exit(0)
 
 
 if __name__ == "__main__":

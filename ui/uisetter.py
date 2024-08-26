@@ -69,7 +69,7 @@ class Ui_MainWindow_2(object):
 
     def retranslateUi(self, MainWindow):
         _translate = QtCore.QCoreApplication.translate
-        MainWindow.setWindowTitle(_translate("MainWindow", "MainWindow"))
+        MainWindow.setWindowTitle(_translate("MainWindow", "Config Merge"))
         self.pushButton_3.setText(_translate("MainWindow", "刷新差异"))
         self.pushButton_5.setText(_translate("MainWindow", "保存"))
         self.pushButton_2.setText(_translate("MainWindow", "导入"))
