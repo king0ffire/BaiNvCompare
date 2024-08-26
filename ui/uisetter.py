@@ -8,6 +8,7 @@ logger = logging.getLogger(__name__)
 
 class Ui_MainWindow_2(object):
     def setupUi(self, MainWindow):
+        self.MainWindow=MainWindow
         MainWindow.setObjectName("MainWindow")
         MainWindow.resize(1124, 901)
         self.centralwidget = QtWidgets.QWidget(parent=MainWindow)
@@ -54,6 +55,9 @@ class Ui_MainWindow_2(object):
 
         shortcut=QtGui.QShortcut(QtGui.QKeySequence("F5"),MainWindow)
         shortcut.activated.connect(self.diffandrefresh)
+        shortcut = QtGui.QShortcut(QtGui.QKeySequence("Ctrl+F"), MainWindow)
+        shortcut.activated.connect(self.handle_search)
+        
         self.pushButton_3.setShortcut("F5")
         self.pushButton_3.clicked.connect(self.diffandrefresh)
         self.pushButton.clicked.connect(self.textEdit.uploadfile)
@@ -107,3 +111,11 @@ class Ui_MainWindow_2(object):
             self.textEdit_2.output_diff_dict()
             self.textEdit.construct_diff_dict(self.textEdit_2._original_dict)
             self.textEdit.output_diff_dict()
+
+    
+    def handle_search(self):
+        if self.textEdit.hasFocus():
+            self.textEdit.search_in_editor()
+        elif self.textEdit_2.hasFocus():
+            self.textEdit_2.search_in_editor()
+

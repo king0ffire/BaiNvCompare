@@ -301,6 +301,27 @@ class DrapDropTextEdit(LineNumberEditor):
             logger.debug(f"{self.alias}: using the content in window to compute dict")
             self.originalcontent = self.toPlainText()
             self._original_dict = helper.parse_string(self.originalcontent)
+    
+    def search_in_editor(self):
+        # 从文本的开头开始查找
+        #editor.moveCursor(QtGui.QTextCursor.MoveOperation.Start)  # 将光标移动到文本的起始位置
+        # 弹出搜索框
+        logger.debug("show search dialog")
+        text, ok = QtWidgets.QInputDialog.getText(self.parent(), f"Search in {self.alias}", "根据光标位置搜索下一个:")
+        if ok and text:
+        # 查找文本
+            found = self.find(text)
+
+            if not found:
+                self.moveCursor(QtGui.QTextCursor.MoveOperation.Start) 
+                found = self.find(text)
+                if not found:
+                    warning_box = QtWidgets.QMessageBox(
+                        QtWidgets.QMessageBox.Icon.Warning,
+                        "warning",
+                        f" {self.alias}中没有找到哦",
+                    )
+                    warning_box.exec()
 
     """    
     def output_diff_by_stringindict(self,opponent_dict:dict):
