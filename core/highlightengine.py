@@ -2,6 +2,7 @@ from PyQt6.QtGui import QTextCharFormat, QColor
 from PyQt6 import QtWidgets, QtCore, QtGui
 import util.enumtypes as enumtypes
 import logging
+from typing import Callable
 
 logger = logging.getLogger(__name__)
 
@@ -50,11 +51,54 @@ def highlight_text(text_edit, comparison_result):
 
 
 class HighLightEngine:
+    def __init__(self):
+        self._red_format = QtGui.QTextCharFormat()
+        self._red_format.setBackground(QColor("red"))
+        self._yellow_format = QtGui.QTextCharFormat()
+        self._yellow_format.setBackground(QColor("yellow"))
+        self._lighter_yellow_format = QtGui.QTextCharFormat()
+        self._lighter_yellow_format.setBackground(QColor("yellow").lighter(160))
+        self._green_format = QtGui.QTextCharFormat()
+        self._green_format.setBackground(QColor("green"))
+        self._cyan_format = QtGui.QTextCharFormat()
+        self._cyan_format.setBackground(QColor("cyan"))
+        self._normal_format = QtGui.QTextCharFormat()
 
-    def highlight_user_modified_line(self, cursor: QtGui.QTextCursor):
-        fmt = QTextCharFormat()
-        fmt.setBackground(QColor(QtCore.Qt.GlobalColor.cyan))
-        cursor.setCharFormat(fmt)
+    def highlightCurrentLine(
+        self,
+        cursor: QtGui.QTextCursor,
+        setExtraSelections_handle: Callable[[QtWidgets.QTextEdit.ExtraSelection], None],
+    ):
+        extraSelections = []
+        selection = QtWidgets.QTextEdit.ExtraSelection()
+
+        selection.format.setBackground(self._lighter_yellow_format)
+        selection.format.setProperty(
+            QtGui.QTextFormat.Property.FullWidthSelection, True
+        )
+        selection.cursor = cursor
+        selection.cursor.clearSelection()
+        extraSelections.append(selection)
+
+        setExtraSelections_handle(extraSelections)
+
+    def highlight_cursor_with_selection(self, cursor: QtGui.QTextCursor):
+        cursor.setCharFormat(self._cyan_format)
+
+    def highlight_cursor(self, document: QtWidgets.QPlainTextEdit, color="cyan"):
+        if color is None or color == "":
+            return
+        if color == "cyan":
+            format = self._cyan_format
+        elif color == "yellow":
+            format = self._yellow_format
+        elif color == "red":
+            format = self._red_format
+        elif color == "green":
+            format = self._green_format
+        elif color == "normal":
+            format = self._normal_format
+        document.setCurrentCharFormat(format)
 
     def highlight_line(self, cursor, format):
         # logger.debug(f"Current block content:{cursor.block().text()},Position in Block: {cursor.positionInBlock()}")

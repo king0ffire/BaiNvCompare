@@ -5,17 +5,17 @@ from PyQt6 import QtWidgets
 import sys
 
 
-def configure_logger(location):
+def configure_logger(location, level=logging.DEBUG):
     logger = logging.getLogger()
-    logger.setLevel(logging.DEBUG)
+    logger.setLevel(level)
 
     que = queue.Queue(-1)
     queue_handler = logging.handlers.QueueHandler(que)
     file_handler = logging.FileHandler(
         os.path.join(location, "socket_server.log"), mode="w"
     )
-    queue_handler.setLevel(logging.DEBUG)
-    file_handler.setLevel(logging.DEBUG)
+    queue_handler.setLevel(level)
+    file_handler.setLevel(level)
     file_handler.setFormatter(
         logging.Formatter(
             "%(asctime)s %(levelname)s %(threadName)s %(module)s.%(funcName)s:%(lineno)d %(message)s"
@@ -37,14 +37,16 @@ def uncaught_exception(exctype, value, tb):
 if __name__ == "__main__":
     if getattr(sys, "frozen", False):
         apppath = os.path.dirname(sys.executable)
+        queuelistener = configure_logger(apppath, logging.INFO)
     else:
         apppath = os.path.dirname(__file__)
-    queuelistener = configure_logger(apppath)
+        queuelistener = configure_logger(apppath)
     queuelistener.start()
     from ui import uisetter
 
     logger = logging.getLogger(__name__)
     app = QtWidgets.QApplication(sys.argv)
+    QtWidgets.QApplication.setCursorFlashTime(500)
     ui = uisetter.Ui_MainWindow_2()
     window = QtWidgets.QMainWindow()
     ui.setupUi(window)

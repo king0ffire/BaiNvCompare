@@ -1,5 +1,4 @@
 from PyQt6 import QtWidgets, QtCore, QtGui
-from PyQt6.QtGui import QTextCharFormat
 from core import diffengine, modifyengine, highlightengine
 import util.helper as helper
 import util.filemanger as filemanger
@@ -14,6 +13,7 @@ class LineNumberEditor(QtWidgets.QPlainTextEdit):
         super(LineNumberEditor, self).__init__(parent)
         self.setLineWrapMode(QtWidgets.QPlainTextEdit.LineWrapMode.NoWrap)
         self.lineNumberArea = LineNumberArea(self)
+        self._highlight_engine = highlightengine.HighLightEngine()
 
         self.blockCountChanged.connect(self.updateLineNumberAreaWidth)
         self.updateRequest.connect(self.updateLineNumberArea)
@@ -72,22 +72,8 @@ class LineNumberEditor(QtWidgets.QPlainTextEdit):
             self.updateLineNumberAreaWidth(0)
 
     def highlightCurrentLine(self):
-        extraSelections = []
-
-        if not self.isReadOnly():
-            selection = QtWidgets.QTextEdit.ExtraSelection()
-
-            lineColor = QtGui.QColor(QtCore.Qt.GlobalColor.yellow).lighter(160)
-
-            selection.format.setBackground(lineColor)
-            selection.format.setProperty(
-                QtGui.QTextFormat.Property.FullWidthSelection, True
-            )
-            selection.cursor = self.textCursor()
-            selection.cursor.clearSelection()
-            extraSelections.append(selection)
-
-        self.setExtraSelections(extraSelections)
+        cursor = self.textCursor()
+        self._highlight_engine.highlightCurrentLine(cursor, self.setExtraSelections)
 
 
 class LineNumberArea(QtWidgets.QWidget):
@@ -108,23 +94,29 @@ class LineNumberArea(QtWidgets.QWidget):
 
 
 class DrapDropTextEdit(LineNumberEditor):
-    def __init__(self, parent=None):
+    def __init__(self, parent=None, alias=None):
         super(DrapDropTextEdit, self).__init__(parent)
+        self.alias = alias
         self.originalcontent = ""
         self.fileoriginalfullpath = None
         self.setAcceptDrops(True)
         self.setLineWrapMode(QtWidgets.QPlainTextEdit.LineWrapMode.NoWrap)
 
+        self.cursorPositionChanged.connect(
+            self.highlight_cursor
+        )  # 保证新插入的东西能正常被标记（粘贴和插入）
         self.textChanged.connect(self.highlight_modified_lines)
-        self.modified_lines = set()
+        # self.modified_lines = set()
+        self._lastmodified_line = None
         self.editbyuser = True
         self.textmode = enumtypes.TextMode.FROMUSER
         self._translate = QtCore.QCoreApplication.translate
         self._original_dict = {}
         self._diff_dict = {}
+        self.cursorhighlighted = False
 
         self._diff_engine = diffengine.DiffEngine()
-        self._highlight_engine = highlightengine.HighLightEngine()
+        # self._highlight_engine = highlightengine.HighLightEngine()
         self._modify_engine = modifyengine.ModifyEngine()
 
     def bindsavebutton(self, button: QtWidgets.QPushButton):
@@ -134,39 +126,51 @@ class DrapDropTextEdit(LineNumberEditor):
         self.label = label
         self.label.setText(self._translate("MainWindow", "手动编辑模式"))
 
+    def highlight_cursor(self):
+        if self.editbyuser == False:
+            return
+        self.editbyuser = False
+        cursor = self.textCursor()
+        if not cursor.hasSelection():
+            self._highlight_engine.highlight_cursor(self, "cyan")
+        logger.debug(
+            f"user changed cursor position, the cursor is changed color. line: {cursor.blockNumber()}, line column is: {cursor.columnNumber()}, line content is:{cursor.block().text()}"
+        )
+        self.editbyuser = True
+
     def highlight_modified_lines(self):
         if self.editbyuser == False:
             return
         cursor = self.textCursor()
+        linenumber = cursor.blockNumber()
+        if self._lastmodified_line == linenumber:
+            return
+        self._lastmodified_line = linenumber
         cursor.select(cursor.SelectionType.LineUnderCursor)
-        line_number = cursor.blockNumber()
-        logger.debug(f"text changed:{cursor.block().text()}")
-        if line_number not in self.modified_lines:
-            self.modified_lines.add(line_number)
-            self._highlight_engine.highlight_user_modified_line(cursor)
-            logger.debug(
-                f"highligh a modified line: {cursor.blockNumber()}, line column is: {cursor.columnNumber()}, line content is:{cursor.block().text()}"
-            )
+        logger.debug(f"{self.alias}: text changed:{cursor.block().text()}")
+        self._highlight_engine.highlight_cursor_with_selection(cursor)
+        logger.info(
+            f"{self.alias}: highligh a modified line: {cursor.blockNumber()}, line column is: {cursor.columnNumber()}, line content is:{cursor.block().text()}"
+        )
 
     def dropEvent(self, e: QtGui.QDropEvent):
-        logger.debug("drop event")
         for url in e.mimeData().urls():
-            logger.debug(f"received file: {url}")
-            logger.debug(f"received file: {url.toLocalFile()}")
+            logger.debug(f"{self.alias}: received file: {url}")
+            logger.debug(f"{self.alias}: received file: {url.toLocalFile()}")
             if url.isLocalFile():
                 path = url.toLocalFile()
+                logger.info(f"{self.alias}: file full path is {path}")
                 self.openfilepath(path)
 
     def uploadfile(self):
-        logger.debug(f"test read file")
+        logger.debug(f"{self.alias}: test read file")
         self.modified_lines = set()
         file_name, file2 = QtWidgets.QFileDialog.getOpenFileName(
             self, "Open tgz and text file", "", "All Files (*)"
         )
         if file_name == "":
             return
-        logger.debug(f"file name {file_name}")
-        logger.debug(f"file name {file2}")
+        logger.info(f"{self.alias}: file full path is  {file_name}")
         self.openfilepath(file_name)
 
     def openfilepath(self, fullpath: str):
@@ -177,14 +181,14 @@ class DrapDropTextEdit(LineNumberEditor):
             self.textfilenameingz, self.originalcontent = filemanger.load_tgz_to_string(
                 fullpath
             )
-            self.setCurrentCharFormat(QTextCharFormat())
+            self._highlight_engine.highlight_cursor(self, "normal")
             self.setPlainText(self.originalcontent)
         else:
             self.originalcontent = filemanger.load_textfile_to_string(fullpath)
-            self.setCurrentCharFormat(QTextCharFormat())
+            self._highlight_engine.highlight_cursor(self, "normal")
             self.setPlainText(self.originalcontent)
 
-        self.savebutton.setEnabled(True)
+        self.savebutton.setEnabled(False)
         self.savebutton.setText(
             self._translate("MainWindow", f"保存到文件(功能未完成)")
         )
@@ -196,7 +200,7 @@ class DrapDropTextEdit(LineNumberEditor):
 
     def savecurrenttextintofile(self):
         if self.fileoriginalfullpath is None:
-            logger.critical(f"undefined save action")
+            logger.critical(f"{self.alias}: undefined save action")
             return
         content = self.toPlainText()
         """
@@ -222,7 +226,7 @@ class DrapDropTextEdit(LineNumberEditor):
                         content, self.fileoriginalfullpath
                     )
             except Exception as e:
-                logger.info(f"save file error:{e}")
+                logger.info(f"{self.alias}: save file error:{e}")
                 warning_box = QtWidgets.QMessageBox(
                     QtWidgets.QMessageBox.Icon.Warning,
                     "warning",
@@ -231,7 +235,7 @@ class DrapDropTextEdit(LineNumberEditor):
                 warning_box.exec()
                 return
             self.originalcontent = content
-            self.setCurrentCharFormat(QTextCharFormat())
+            self._highlight_engine.highlight_cursor(self, "normal")
             self.setPlainText(self.originalcontent)
         elif self.textmode == enumtypes.TextMode.DIFF:
             try:
@@ -239,7 +243,7 @@ class DrapDropTextEdit(LineNumberEditor):
                     self.originalcontent, self.toPlainText(), self._diff_dict
                 )
             except helper.InvaildInputError as e:
-                logger.info(f"invaild input error {e}")
+                logger.info(f"{self.alias}: invaild input error {e}")
                 warning_box = QtWidgets.QMessageBox(
                     QtWidgets.QMessageBox.Icon.Warning,
                     "warning",
@@ -258,7 +262,7 @@ class DrapDropTextEdit(LineNumberEditor):
                         self.originalcontent, self.fileoriginalfullpath
                     )
             except Exception as e:
-                logger.critical(f"save file error:{e}")
+                logger.info(f"{self.alias}: save file error:{e}")
                 warning_box = QtWidgets.QMessageBox(
                     QtWidgets.QMessageBox.Icon.Warning,
                     "warning",
@@ -266,10 +270,10 @@ class DrapDropTextEdit(LineNumberEditor):
                 )
                 warning_box.exec()
         else:
-            logger.critical(f"unknown textmode:{self.textmode.name}")
+            logger.critical(f"{self.alias}: unknown textmode:{self.textmode.name}")
 
     def construct_diff_dict(self, opponent_dict: dict[str, dict[str, str]]):
-        self._diff_dict = helper.diff_dict_by_dict(self.originalcontent, opponent_dict)
+        self._diff_dict = self._diff_engine.diff_dict_by_dict(self.originalcontent,opponent_dict)
 
     def output_diff_dict(self):
         self.editbyuser = False
@@ -278,7 +282,7 @@ class DrapDropTextEdit(LineNumberEditor):
 
         self._diff_engine.output_diff_dict(self._diff_dict, cursor.insertText)
 
-        logger.debug("switch to DIFF MODE")
+        logger.debug(f"{self.alias}: switch to DIFF MODE")
         self.textmode = enumtypes.TextMode.DIFF
         self.savebutton.setText(self._translate("MainWindow", f"同步差异到文件"))
         self.label.setText(
@@ -291,10 +295,10 @@ class DrapDropTextEdit(LineNumberEditor):
             self.textmode == enumtypes.TextMode.FROMFILE
             or self.textmode == enumtypes.TextMode.DIFF
         ):
-            logger.debug(f"using the saved content to compute dict")
+            logger.debug(f"{self.alias}: using the saved content to compute dict")
             self._original_dict = helper.parse_string(self.originalcontent)
         elif self.textmode == enumtypes.TextMode.FROMUSER:
-            logger.debug(f"using the content in window to compute dict")
+            logger.debug(f"{self.alias}: using the content in window to compute dict")
             self.originalcontent = self.toPlainText()
             self._original_dict = helper.parse_string(self.originalcontent)
 

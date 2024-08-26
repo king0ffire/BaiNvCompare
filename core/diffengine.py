@@ -1,7 +1,9 @@
 from PyQt6.QtGui import QTextCharFormat, QColor, QTextCursor
 import logging
+from util import helper
 import util.enumtypes as enumtypes
 from typing import Callable
+import copy
 
 logger = logging.getLogger(__name__)
 
@@ -19,7 +21,7 @@ class DiffEngine:
         red_format = QTextCharFormat()
         red_format.setBackground(QColor("red"))
         normal_format = QTextCharFormat()
-        logger.info("output by using dict: orderless")
+        logger.info(f"output by using dict: orderless")
         for section, configs in diff_dict.items():
             logger.debug(f"section:{section}")
             insert_handle(f"[{section}]\n", normal_format)
@@ -39,6 +41,163 @@ class DiffEngine:
                         f"insert yellow: section:{section},key:{key},value:{status[0]}"
                     )
                     insert_handle(f"{key} = {status[0]}\n", yellow_format)
+
+    def diff_dict_by_dict(self,
+        content: str, opponent_dict: dict[str, dict[str, str]]
+    ) -> dict[str, dict[str, tuple]]:
+        # opponent_dict should be a copy
+        opponent_dict = copy.deepcopy(opponent_dict)
+        diff_dict = {}
+
+        logger.info("start diff_by_stringindict")
+        lines = content.split("\n")
+        current_section = None
+        diff_dict[current_section] = {}
+        for numb, line in enumerate(lines):
+            line = line.strip()
+            logger.debug(f"line has {line}")
+            if line.startswith("[") and line.endswith("]"):
+                if current_section in opponent_dict:
+                    for key, value in opponent_dict[current_section].items():
+                        logger.debug(
+                            f"missing:{current_section},key:{key},value:{value}"
+                        )
+                        diff_dict[current_section][key] = (
+                            value,
+                            enumtypes.DiffType.REMOVED,
+                        )
+                    del opponent_dict[current_section]
+                if diff_dict[current_section] == {}:
+                    del diff_dict[current_section]
+                current_section = line[1:-1]
+                logger.debug(f"current section={current_section}")
+                diff_dict[current_section] = {}
+                logger.debug(f"new section:{current_section}")
+            elif "=" in line:
+                key, value = line.split("=", 1)
+                key = key.strip()
+                value = value.strip()
+                if (
+                    current_section in opponent_dict
+                    and key in opponent_dict[current_section]
+                ):
+                    if value != opponent_dict[current_section][key]:
+                        logger.debug(
+                            f"insert yellow: section:{current_section},key:{key},value:{value}"
+                        )
+                        diff_dict[current_section][key] = (
+                            value,
+                            enumtypes.DiffType.MODIFIED,
+                        )
+                    del opponent_dict[current_section][key]
+                else:
+                    logger.debug(
+                        f"insert green: section:{current_section},key:{key},value:{value}"
+                    )
+                    diff_dict[current_section][key] = (
+                        value,
+                        enumtypes.DiffType.ADDED,
+                    )
+            elif line == "":
+                continue
+            else:
+                logger.error(f"Error parsing line {numb}: {line}")
+                raise helper.InvaildInputError(numb)
+        if current_section in opponent_dict:
+            for key, value in opponent_dict[current_section].items():
+                logger.debug(f"missing:{current_section},key:{key},value:{value}")
+                diff_dict[current_section][key] = (
+                    value,
+                    enumtypes.DiffType.REMOVED,
+                )
+            del opponent_dict[current_section]
+        if diff_dict[current_section] == {}:
+            del diff_dict[current_section]
+        current_section = None
+
+        logger.debug(f"missing sections:{opponent_dict}")
+        for current_section in opponent_dict:
+            diff_dict[current_section] = {}
+            logger.debug(f"currrent missing section:[{current_section}]")
+            for key, value in opponent_dict[current_section].items():
+                diff_dict[current_section][key] = (
+                    value,
+                    enumtypes.DiffType.REMOVED,
+                )
+        return diff_dict
+
+    def diff_list_by_dict(
+        content: str, opponent_dict: dict[str, dict[str, str]]
+    ) -> list[tuple[str, str, str, enumtypes.DiffType]]:
+        # opponent_dict should be a copy
+        opponent_dict = copy.deepcopy(opponent_dict)
+        diff_list = []
+
+        logger.info("start diff_by_stringindict")
+        lines = content.split("\n")
+        current_section = None
+        for numb, line in enumerate(lines):
+            line = line.strip()
+            logger.debug(f"line has {line}")
+            if line.startswith("[") and line.endswith("]"):
+                if current_section in opponent_dict:
+                    for key, value in opponent_dict[current_section].items():
+                        logger.debug(
+                            f"missing:{current_section},key:{key},value:{value}"
+                        )
+                        diff_list.append(
+                            (current_section, key, value, enumtypes.DiffType.REMOVED)
+                        )
+                    del opponent_dict[current_section]
+                current_section = line[1:-1]
+                logger.debug(f"new section:{current_section}")
+            elif "=" in line:
+                key, value = line.split("=", 1)
+                key = key.strip()
+                value = value.strip()
+                if (
+                    current_section in opponent_dict
+                    and key in opponent_dict[current_section]
+                ):
+                    if value != opponent_dict[current_section][key]:
+                        logger.debug(
+                            f"insert yellow: section:{current_section},key:{key},value:{value}"
+                        )
+                        diff_list.append(
+                            (current_section, key, value, enumtypes.DiffType.MODIFIED)
+                        )
+                    del opponent_dict[current_section][key]
+                else:
+                    logger.debug(
+                        f"insert green: section:{current_section},key:{key},value:{value}"
+                    )
+                    diff_list.append(
+                        (current_section, key, value, enumtypes.DiffType.ADDED)
+                    )
+            elif line == "":
+                continue
+            else:
+                logger.error(f"Error parsing line {numb}: {line}")
+                raise helper.InvaildInputError(numb)
+        if current_section in opponent_dict:
+            for key, value in opponent_dict[current_section].items():
+                logger.debug(
+                    f"missing section:{current_section},key:{key},value:{value}"
+                )
+                diff_list.append(
+                    (current_section, key, value, enumtypes.DiffType.REMOVED)
+                )
+            del opponent_dict[current_section]
+        current_section = None
+
+        logger.debug(f"missing sections:{opponent_dict}")
+        for current_section in opponent_dict:
+            logger.debug(f"currrent missing section:[{current_section}]")
+            for key, value in opponent_dict[current_section].items():
+                diff_list.append(
+                    (current_section, key, value, enumtypes.DiffType.REMOVED)
+                )
+        return diff_list
 
     """
     def output_diff_by_stringindict(

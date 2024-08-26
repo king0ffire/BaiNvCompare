@@ -1,4 +1,4 @@
-from PyQt6 import QtWidgets, QtCore
+from PyQt6 import QtWidgets, QtCore,QtGui
 from ui.textviewer import DrapDropTextEdit
 import logging
 from util import helper
@@ -17,11 +17,11 @@ class Ui_MainWindow_2(object):
         self.pushButton_2 = QtWidgets.QPushButton(parent=self.centralwidget)
         self.pushButton_2.setObjectName("pushButton_2")
         self.gridLayout.addWidget(self.pushButton_2, 2, 2, 1, 1)
-        self.textEdit = DrapDropTextEdit(parent=self.centralwidget)
+        self.textEdit = DrapDropTextEdit(parent=self.centralwidget, alias="左窗口")
         self.textEdit.setMinimumSize(QtCore.QSize(550, 763))
         self.textEdit.setObjectName("textEdit")
         self.gridLayout.addWidget(self.textEdit, 1, 0, 1, 2)
-        self.textEdit_2 = DrapDropTextEdit(parent=self.centralwidget)
+        self.textEdit_2 = DrapDropTextEdit(parent=self.centralwidget, alias="右窗口")
         self.textEdit_2.setMinimumSize(QtCore.QSize(550, 763))
         self.textEdit_2.setObjectName("textEdit_2")
         self.gridLayout.addWidget(self.textEdit_2, 1, 2, 1, 2)
@@ -52,6 +52,9 @@ class Ui_MainWindow_2(object):
         self.menubar.setObjectName("menubar")
         MainWindow.setMenuBar(self.menubar)
 
+        shortcut=QtGui.QShortcut(QtGui.QKeySequence("F5"),MainWindow)
+        shortcut.activated.connect(self.diffandrefresh)
+        self.pushButton_3.setShortcut("F5")
         self.pushButton_3.clicked.connect(self.diffandrefresh)
         self.pushButton.clicked.connect(self.textEdit.uploadfile)
         self.textEdit_2.bindsavebutton(self.pushButton_5)
@@ -70,7 +73,7 @@ class Ui_MainWindow_2(object):
     def retranslateUi(self, MainWindow):
         _translate = QtCore.QCoreApplication.translate
         MainWindow.setWindowTitle(_translate("MainWindow", "Config Merge"))
-        self.pushButton_3.setText(_translate("MainWindow", "刷新差异"))
+        self.pushButton_3.setText(_translate("MainWindow", "刷新差异 (F5)"))
         self.pushButton_5.setText(_translate("MainWindow", "保存"))
         self.pushButton_2.setText(_translate("MainWindow", "导入"))
         self.pushButton.setText(_translate("MainWindow", "导入"))
