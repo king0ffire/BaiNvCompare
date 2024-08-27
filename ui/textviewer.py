@@ -240,8 +240,13 @@ class DrapDropTextEdit(LineNumberEditor):
             self.setPlainText(self.originalcontent)
         elif self.textmode == enumtypes.TextMode.DIFF:
             try:
-                self.originalcontent, self.numberofmodification = self._modify_engine.process_diff_modification(
-                    self.originalcontent, self.toPlainText(), self._diff_dict,self.alias
+                self.originalcontent, self.numberofmodification = (
+                    self._modify_engine.process_diff_modification(
+                        self.originalcontent,
+                        self.toPlainText(),
+                        self._diff_dict,
+                        self.alias,
+                    )
                 )
             except helper.InvaildInputError as e:
                 logger.info(f"{self.alias}: invaild input error {e}")
@@ -281,7 +286,7 @@ class DrapDropTextEdit(LineNumberEditor):
 
     def construct_diff_dict(self, opponent_dict: dict[str, dict[str, str]]):
         self._diff_dict = self._diff_engine.diff_dict_by_dict(
-            self.originalcontent, opponent_dict,self.alias
+            self.originalcontent, opponent_dict, self.alias
         )
 
     def output_diff_dict(self):
