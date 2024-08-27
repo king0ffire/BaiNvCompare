@@ -13,7 +13,8 @@ class DiffEngine:
         self,
         diff_dict: dict[str, dict[str, tuple]],
         insert_handle: Callable[[str, QTextCharFormat], None],
-    ):
+    )->int:
+        numberofmodification=0
         green_format = QTextCharFormat()
         green_format.setBackground(QColor("green"))
         yellow_format = QTextCharFormat()
@@ -26,6 +27,7 @@ class DiffEngine:
             logger.debug(f"section:{section}")
             insert_handle(f"[{section}]\n", normal_format)
             for key, status in configs.items():
+                numberofmodification+=1
                 if status[1] == enumtypes.DiffType.ADDED:
                     logger.debug(
                         f"insert green: section:{section},key:{key},value:{status[0]}"
@@ -41,15 +43,16 @@ class DiffEngine:
                         f"insert yellow: section:{section},key:{key},value:{status[0]}"
                     )
                     insert_handle(f"{key} = {status[0]}\n", yellow_format)
+        return numberofmodification
 
     def diff_dict_by_dict(self,
-        content: str, opponent_dict: dict[str, dict[str, str]]
+        content: str, opponent_dict: dict[str, dict[str, str]],alias=""
     ) -> dict[str, dict[str, tuple]]:
         # opponent_dict should be a copy
         opponent_dict = copy.deepcopy(opponent_dict)
         diff_dict = {}
 
-        logger.info("start diff_by_stringindict")
+        logger.info(f"start {alias} diff_by_stringindict")
         lines = content.split("\n")
         current_section = None
         diff_dict[current_section] = {}

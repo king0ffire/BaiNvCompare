@@ -89,7 +89,7 @@ class Ui_MainWindow_2(object):
         warning_box = None
         try:
             self.textEdit.prepareoriginaldict()
-            logging.debug(f"debug original dict{self.textEdit._original_dict}")
+            logging.debug(f"debug {self.textEdit.alias}original dict{self.textEdit._original_dict}")
         except helper.InvaildInputError as e:
             warning_box = QtWidgets.QMessageBox(
                 QtWidgets.QMessageBox.Icon.Warning,
@@ -99,6 +99,7 @@ class Ui_MainWindow_2(object):
             warning_box.exec()
         try:
             self.textEdit_2.prepareoriginaldict()
+            logging.debug(f"debug {self.textEdit_2.alias}original dict{self.textEdit_2._original_dict}")
         except helper.InvaildInputError as e:
             warning_box = QtWidgets.QMessageBox(
                 QtWidgets.QMessageBox.Icon.Warning,

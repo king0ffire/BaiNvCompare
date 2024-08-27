@@ -99,6 +99,7 @@ class DrapDropTextEdit(LineNumberEditor):
         self.alias = alias
         self.originalcontent = ""
         self.fileoriginalfullpath = None
+        self.numberofmodification = 0
         self.setAcceptDrops(True)
         self.setLineWrapMode(QtWidgets.QPlainTextEdit.LineWrapMode.NoWrap)
 
@@ -239,8 +240,8 @@ class DrapDropTextEdit(LineNumberEditor):
             self.setPlainText(self.originalcontent)
         elif self.textmode == enumtypes.TextMode.DIFF:
             try:
-                self.originalcontent = self._modify_engine.process_diff_modification(
-                    self.originalcontent, self.toPlainText(), self._diff_dict
+                self.originalcontent, self.numberofmodification = self._modify_engine.process_diff_modification(
+                    self.originalcontent, self.toPlainText(), self._diff_dict,self.alias
                 )
             except helper.InvaildInputError as e:
                 logger.info(f"{self.alias}: invaild input error {e}")
@@ -269,11 +270,19 @@ class DrapDropTextEdit(LineNumberEditor):
                     f"Save file error: Please check if the file path exists and is available for writing.",
                 )
                 warning_box.exec()
+            information_box = QtWidgets.QMessageBox(
+                QtWidgets.QMessageBox.Icon.Information,
+                "Saved Successfully",
+                f"There are {self.numberofmodification} key-value lines changed in the file.",
+            )
+            information_box.exec()
         else:
             logger.critical(f"{self.alias}: unknown textmode:{self.textmode.name}")
 
     def construct_diff_dict(self, opponent_dict: dict[str, dict[str, str]]):
-        self._diff_dict = self._diff_engine.diff_dict_by_dict(self.originalcontent,opponent_dict)
+        self._diff_dict = self._diff_engine.diff_dict_by_dict(
+            self.originalcontent, opponent_dict,self.alias
+        )
 
     def output_diff_dict(self):
         self.editbyuser = False
@@ -285,6 +294,7 @@ class DrapDropTextEdit(LineNumberEditor):
         logger.debug(f"{self.alias}: switch to DIFF MODE")
         self.textmode = enumtypes.TextMode.DIFF
         self.savebutton.setText(self._translate("MainWindow", f"同步差异到文件"))
+        self.savebutton.setEnabled(True)
         self.label.setText(
             self._translate("MainWindow", f"差异编辑模式: {self.fileoriginalfullpath}")
         )
@@ -301,19 +311,21 @@ class DrapDropTextEdit(LineNumberEditor):
             logger.debug(f"{self.alias}: using the content in window to compute dict")
             self.originalcontent = self.toPlainText()
             self._original_dict = helper.parse_string(self.originalcontent)
-    
+
     def search_in_editor(self):
         # 从文本的开头开始查找
-        #editor.moveCursor(QtGui.QTextCursor.MoveOperation.Start)  # 将光标移动到文本的起始位置
+        # editor.moveCursor(QtGui.QTextCursor.MoveOperation.Start)  # 将光标移动到文本的起始位置
         # 弹出搜索框
         logger.debug("show search dialog")
-        text, ok = QtWidgets.QInputDialog.getText(self.parent(), f"Search in {self.alias}", "根据光标位置搜索下一个:")
+        text, ok = QtWidgets.QInputDialog.getText(
+            self.parent(), f"Search in {self.alias}", "根据光标位置搜索下一个:"
+        )
         if ok and text:
-        # 查找文本
+            # 查找文本
             found = self.find(text)
 
             if not found:
-                self.moveCursor(QtGui.QTextCursor.MoveOperation.Start) 
+                self.moveCursor(QtGui.QTextCursor.MoveOperation.Start)
                 found = self.find(text)
                 if not found:
                     warning_box = QtWidgets.QMessageBox(

@@ -1,14 +1,14 @@
 import logging
 from util import enumtypes, helper
-
+from typing import Tuple
 
 logger = logging.getLogger(__name__)
 
 
 class ModifyEngine:
     def process_diff_modification(
-        self, original_content, current_diff_str, old_diff_dict
-    ) -> str:  # 获得已经修改好的string，该str直接用于保存
+        self, original_content, current_diff_str, old_diff_dict,alias=""
+    ) -> Tuple[str,int]:  # 获得已经修改好的string，该str直接用于保存
         newdiffdict = helper.parse_diffcontent_todict(current_diff_str)
         modification_dict = self.detect_diff_dict_modifications(
             old_diff_dict, newdiffdict
@@ -125,11 +125,12 @@ class ModifyEngine:
                 del result[section]
         return result
 
-    def modify_str_by_dict(self, content: str, modifydict: dict[str, dict[str]]) -> str:
+    def modify_str_by_dict(self, content: str, modifydict: dict[str, dict[str]]) -> Tuple[str,int]:
         result = []
+        numberofmodification=0
         lines = content.splitlines()
         current_section = None
-        logger.debug(
+        logger.info(
             f"start to construct sync file, modification needed to be made:{modifydict}"
         )
         for line in lines:
@@ -144,6 +145,7 @@ class ModifyEngine:
                             f"adding new config section:{current_section},key:{key},value:{newvalue}"
                         )
                         result.append(f"{key} = {newvalue}")
+                        numberofmodification+=1
                     del modifydict[current_section]
                 else:
                     logger.debug(
@@ -158,6 +160,7 @@ class ModifyEngine:
                 value = value.strip()
                 if current_section in modifydict and key in modifydict[current_section]:
                     newvalue, state = modifydict[current_section][key]
+
                     if state == enumtypes.DiffType.ADDED:
                         logger.error(
                             f"unexpected add:section={current_section},key={key},value={newvalue}"
@@ -166,8 +169,10 @@ class ModifyEngine:
                         logger.debug(
                             f"file removed :section={current_section},key={key},value={newvalue}"
                         )
+                        numberofmodification+=1
                     elif state == enumtypes.DiffType.MODIFIED:
                         result.append(f"{key} = {newvalue}")
+                        numberofmodification+=1
                         logger.debug(
                             f"file modified :section={current_section},key={key},value={newvalue}"
                         )
@@ -176,6 +181,7 @@ class ModifyEngine:
                     del modifydict[current_section][key]
                 else:  # config项没有任何修改
                     result.append(line)
+                    
         if current_section in modifydict:
             for key, status in modifydict[current_section].items():
                 newvalue, state = status
@@ -183,6 +189,7 @@ class ModifyEngine:
                     f"adding new config section:{current_section},key:{key},value:{newvalue}"
                 )
                 result.append(f"{key} = {newvalue}")
+                numberofmodification+=1
             del modifydict[current_section]
         current_section = None
 
@@ -195,5 +202,6 @@ class ModifyEngine:
                     f"adding new config section:{current_section},key:{key},value:{newvalue}"
                 )
                 result.append(f"{key} = {newvalue}")
+                numberofmodification+=1
 
-        return "\n".join(result)
+        return "\n".join(result),numberofmodification
