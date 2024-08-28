@@ -17,6 +17,7 @@ class LineNumberEditor(QtWidgets.QPlainTextEdit):
 
         self.blockCountChanged.connect(self.updateLineNumberAreaWidth)
         self.updateRequest.connect(self.updateLineNumberArea)
+        self.updateLineNumberAreaWidth(0)
         # self.cursorPositionChanged.connect(self.highlightCurrentLine)
 
     def lineNumberAreaPaintEvent(self, event: QtGui.QPaintEvent):
@@ -44,8 +45,8 @@ class LineNumberEditor(QtWidgets.QPlainTextEdit):
             bottom = top + int(self.blockBoundingRect(block).height())
             blockNumber += 1
 
-    def resizeEvent(self, event):
-        super().resizeEvent(event)
+    def resizeEvent(self, e):
+        super().resizeEvent(e)
 
         cr = self.contentsRect()
         self.lineNumberArea.setGeometry(
@@ -89,35 +90,47 @@ class LineNumberArea(QtWidgets.QWidget):
         space = 3 + self.fontMetrics().horizontalAdvance("9") * digits
         return space
 
-    def paintEvent(self, event):
-        self.codeEditor.lineNumberAreaPaintEvent(event)
+    def paintEvent(self, a0):
+        self.codeEditor.lineNumberAreaPaintEvent(a0)
 
 
 class DrapDropTextEdit(LineNumberEditor):
-    def __init__(self, parent=None, alias=None):
+    def __init__(
+        self,
+        parent: QtWidgets.QWidget | None = None,
+        master: "DrapDropTextEdit|None" = None,
+        alias: str = "",
+    ):
         super(DrapDropTextEdit, self).__init__(parent)
-        self.alias = alias
-        self.originalcontent = ""
-        self.fileoriginalfullpath = None
-        self.numberofmodification = 0
+        self._master = master
+        self._alias = alias
+        self._original_content = ""
+        self._file_original_full_path = None
+        self._numberofmodification = 0
+        self._lastmodified_block_number = None
+        self._editbyuser = True
+        self._textmode = enumtypes.TextMode.FROMUSER
+        self._translate = QtCore.QCoreApplication.translate
+        self._original_dict = {}
+        self._original_list = []
+        self._original_extraselections: list[QtWidgets.QTextEdit.ExtraSelection] = []
+        self._new_extraselections = []
+        self._diff_dict = {}
+        self._cursor_last_block_number = 0
+        self._cursor_last_block_length = 0
+        self._cursor_last_last_block_number = 0
+        self._cursor_last_last_block_length = 0
+        self._line_highlighted = True
+
         self.setAcceptDrops(True)
         self.setLineWrapMode(QtWidgets.QPlainTextEdit.LineWrapMode.NoWrap)
 
         self.cursorPositionChanged.connect(
-            self.highlight_cursor
+            self.update_cursor_status
         )  # 保证新插入的东西能正常被标记（粘贴和插入）
-        self.textChanged.connect(self.highlight_modified_lines)
-        # self.modified_lines = set()
-        self._lastmodified_line = None
-        self.editbyuser = True
-        self.textmode = enumtypes.TextMode.FROMUSER
-        self._translate = QtCore.QCoreApplication.translate
-        self._original_dict = {}
-        self._diff_dict = {}
-        self.cursorhighlighted = False
+        self.textChanged.connect(self.update_extraselections)
 
         self._diff_engine = diffengine.DiffEngine()
-        # self._highlight_engine = highlightengine.HighLightEngine()
         self._modify_engine = modifyengine.ModifyEngine()
 
     def bindsavebutton(self, button: QtWidgets.QPushButton):
@@ -127,195 +140,255 @@ class DrapDropTextEdit(LineNumberEditor):
         self.label = label
         self.label.setText(self._translate("MainWindow", "手动编辑模式"))
 
+    def bindslave(self, textedit: QtWidgets.QPlainTextEdit):
+        self._slave = textedit
+
+    def sync_scroll_bar(
+        self,
+    ):  # 'self' scroll value is influenced by opponent scroll bar
+        if self._master is not None:
+            self._master.verticalScrollBar().valueChanged.connect(
+                lambda: self.verticalScrollBar().setValue(
+                    self._master.verticalScrollBar().value()
+                )
+            )
+        else:
+            self._slave.verticalScrollBar().valueChanged.connect(
+                lambda: self.verticalScrollBar().setValue(
+                    self._slave.verticalScrollBar().value()
+                )
+            )
+
+    def update_cursor_status(self):
+        cursor = self.textCursor()
+        logger.debug(f"cursor changed to line: {cursor.blockNumber()}")
+
+        new_block_number = cursor.blockNumber()
+        new_block_length = cursor.block().length()
+        if (
+            self._cursor_last_block_number == new_block_number
+            and self._cursor_last_last_block_number != new_block_number
+        ):
+            self._line_highlighted = False
+        self._cursor_last_last_block_number = self._cursor_last_block_number
+        # self._cursor_last_last_block_length=self.document().findBlockByLineNumber(self._cursor_last_last_block_number).length()
+        self._cursor_last_block_number = new_block_number
+        # self._cursor_last_last_block_length=new_block_length
+
     def highlight_cursor(self):
-        if self.editbyuser == False:
+        if self._editbyuser == False:
             return
-        self.editbyuser = False
+        self._editbyuser = False
         cursor = self.textCursor()
         if not cursor.hasSelection():
             self._highlight_engine.highlight_cursor(self, "cyan")
         logger.debug(
             f"user changed cursor position, the cursor is changed color. line: {cursor.blockNumber()}, line column is: {cursor.columnNumber()}, line content is:{cursor.block().text()}"
         )
-        self.editbyuser = True
+        self._editbyuser = True
+
+    def update_extraselections(self):
+        if self._editbyuser == False:
+            return
+        cursor = self.textCursor()
+        block_number = cursor.blockNumber()
+        logger.debug(f"text changed, current block number is {block_number}, cursor last block number is {self._cursor_last_block_number}, cursor last last block number is {self._cursor_last_last_block_number}")
+
+        if self._cursor_last_last_block_number < block_number:  # newlines
+            # if self._cursor_last_last_block_length!=self.document().findBlockByLineNumber(self._cursor_last_last_block_number).length():
+            # self._extraselections.append(self._highlight_engine.extraselectLine(self,self._cursor_last_last_block_number))
+            for i in range(self._cursor_last_last_block_number, block_number + 1):
+                self._new_extraselections.append(
+                    self._highlight_engine.extraselectLine(self, i)
+                )
+                logger.debug(f"current block number:{i}")
+        elif (
+            self._cursor_last_last_block_number >= block_number
+        ):  # deletions and same line edit
+            self._new_extraselections.append(
+                self._highlight_engine.extraselectCurrentLine(self)
+            )
+        self._lastmodified_block_number = block_number
+        self.setExtraSelections(
+            self._original_extraselections + self._new_extraselections
+        )
 
     def highlight_modified_lines(self):
-        if self.editbyuser == False:
+        if self._editbyuser == False:
             return
         cursor = self.textCursor()
         linenumber = cursor.blockNumber()
-        if self._lastmodified_line == linenumber:
+        if self._lastmodified_block_number == linenumber:
             return
-        self._lastmodified_line = linenumber
+        self._lastmodified_block_number = linenumber
         cursor.select(cursor.SelectionType.LineUnderCursor)
-        logger.debug(f"{self.alias}: text changed:{cursor.block().text()}")
+        logger.debug(f"{self._alias}: text changed:{cursor.block().text()}")
         self._highlight_engine.highlight_cursor_with_selection(cursor)
         logger.info(
-            f"{self.alias}: highligh a modified line: {cursor.blockNumber()}, line column is: {cursor.columnNumber()}, line content is:{cursor.block().text()}"
+            f"{self._alias}: highligh a modified line: {cursor.blockNumber()}, line column is: {cursor.columnNumber()}, line content is:{cursor.block().text()}"
         )
 
     def dropEvent(self, e: QtGui.QDropEvent):
+        super().dropEvent(e)
         for url in e.mimeData().urls():
-            logger.debug(f"{self.alias}: received file: {url}")
-            logger.debug(f"{self.alias}: received file: {url.toLocalFile()}")
+            logger.debug(f"{self._alias}: received file: {url}")
+            logger.debug(f"{self._alias}: received file: {url.toLocalFile()}")
             if url.isLocalFile():
                 path = url.toLocalFile()
-                logger.info(f"{self.alias}: file full path is {path}")
-                self.openfilepath(path)
+                logger.info(f"{self._alias}: file full path is {path}")
+                self._open_file(path)
+        self.setFocus()
 
     def uploadfile(self):
-        logger.debug(f"{self.alias}: test read file")
-        self.modified_lines = set()
-        file_name, file2 = QtWidgets.QFileDialog.getOpenFileName(
+        logger.debug(f"{self._alias}: test read file")
+        file_path, file2 = QtWidgets.QFileDialog.getOpenFileName(
             self, "Open tgz and text file", "", "All Files (*)"
         )
-        if file_name == "":
+        if file_path == "":
             return
-        logger.info(f"{self.alias}: file full path is  {file_name}")
-        self.openfilepath(file_name)
+        logger.info(f"{self._alias}: file full path is  {file_path}")
+        self._open_file(file_path)
 
-    def openfilepath(self, fullpath: str):
-        self.editbyuser = False
+    def _open_file(self, fullpath: str):
+        self._editbyuser = False
         root, ext = helper.split_filename(fullpath)
-        self.fileoriginalfullpath = fullpath
+        self._file_original_full_path = fullpath
         if ext.endswith("gz"):
-            self.textfilenameingz, self.originalcontent = filemanger.load_tgz_to_string(
-                fullpath
+            self.textfilenameingz, self._original_content = (
+                filemanger.load_tgz_to_string(fullpath)
             )
             self._highlight_engine.highlight_cursor(self, "normal")
-            self.setPlainText(self.originalcontent)
+            self.setPlainText(self._original_content)
         else:
-            self.originalcontent = filemanger.load_textfile_to_string(fullpath)
+            self._original_content = filemanger.load_textfile_to_string(fullpath)
             self._highlight_engine.highlight_cursor(self, "normal")
-            self.setPlainText(self.originalcontent)
-
-        self.savebutton.setEnabled(False)
-        self.savebutton.setText(
-            self._translate("MainWindow", f"保存到文件(功能未完成)")
-        )
-        self.textmode = enumtypes.TextMode.FROMFILE
+            self.setPlainText(self._original_content)
+        self._original_extraselections = []
+        self._new_extraselections = []
+        self._highlight_engine.clearExtraselections(self)
+        self.savebutton.setText(self._translate("MainWindow", f"保存到文件"))
+        self._textmode = enumtypes.TextMode.FROMFILE
         self.label.setText(
-            self._translate("MainWindow", f"文件编辑模式: {self.fileoriginalfullpath}")
+            self._translate(
+                "MainWindow", f"文件编辑模式: {self._file_original_full_path}"
+            )
         )
-        self.editbyuser = True
+        self.prepare_original_data()
+        self.savebutton.setEnabled(True)
+        self.setFocus()
+        self._editbyuser = True
 
-    def savecurrenttextintofile(self):
-        if self.fileoriginalfullpath is None:
-            logger.critical(f"{self.alias}: undefined save action")
+    def save_current_text_tofile(self):
+        self._editbyuser = False
+        if self._file_original_full_path is None:
+            logger.critical(f"{self._alias}: undefined save action")
             return
-        content = self.toPlainText()
-        """
-        if self.textmode==enumtypes.TextMode.DIFF:
+        current_content = self.toPlainText()
+        if (
+            self._textmode == enumtypes.TextMode.FROMFILE
+            or self._textmode == enumtypes.TextMode.DIFF
+        ):
+            # 查询改动量，保存全文到文件
             try:
-                self.originalcontent=self._modify_engine.process_diff_modification(self)
+                keyvaluecount, sectioncount = self._modify_engine.record_modification(
+                    self._original_dict, current_content
+                )
             except helper.InvaildInputError as e:
-                warning_box=QtWidgets.QMessageBox(QtWidgets.QMessageBox.Icon.Warning,"warning",f"invalid input at line {e}")
-                warning_box.exec()
-        if self.fileoriginalfullpath.endswith("gz"):
-            filemanger.save_string_to_tgz(content,self.fileoriginalfullpath)
-        else:
-            filemanger.save_string_to_textfile(content,self.fileoriginalfullpath)
-        """
-
-        if self.textmode == enumtypes.TextMode.FROMFILE:
-            # 直接保存，不会有任何解析
-            try:
-                if self.fileoriginalfullpath.endswith("gz"):
-                    filemanger.save_string_to_tgz(content, self.fileoriginalfullpath)
-                else:
-                    filemanger.save_string_to_textfile(
-                        content, self.fileoriginalfullpath
-                    )
-            except Exception as e:
-                logger.info(f"{self.alias}: save file error:{e}")
-                warning_box = QtWidgets.QMessageBox(
+                logger.info(
+                    f"{self._alias}: invaild input error at line {int(e.args[0])+1}"
+                )
+                critical_box = QtWidgets.QMessageBox(
                     QtWidgets.QMessageBox.Icon.Warning,
                     "warning",
-                    f"Save file error: Please check if the file path exists and is available for writing.",
+                    f"invalid input at line {int(e.args[0])+1}",
                 )
-                warning_box.exec()
+                critical_box.exec()
                 return
-            self.originalcontent = content
-            self._highlight_engine.highlight_cursor(self, "normal")
-            self.setPlainText(self.originalcontent)
-        elif self.textmode == enumtypes.TextMode.DIFF:
             try:
-                self.originalcontent, self.numberofmodification = (
-                    self._modify_engine.process_diff_modification(
-                        self.originalcontent,
-                        self.toPlainText(),
-                        self._diff_dict,
-                        self.alias,
-                    )
-                )
-            except helper.InvaildInputError as e:
-                logger.info(f"{self.alias}: invaild input error {e}")
-                warning_box = QtWidgets.QMessageBox(
-                    QtWidgets.QMessageBox.Icon.Warning,
-                    "warning",
-                    f"invalid input at line {e}",
-                )
-                warning_box.exec()
-            try:
-                if self.fileoriginalfullpath.endswith("gz"):
+                if self._file_original_full_path.endswith("gz"):
                     filemanger.save_string_to_tgz(
-                        self.originalcontent,
-                        self.fileoriginalfullpath,
+                        current_content,
+                        self._file_original_full_path,
                         self.textfilenameingz,
                     )
                 else:
                     filemanger.save_string_to_textfile(
-                        self.originalcontent, self.fileoriginalfullpath
+                        current_content, self._file_original_full_path
                     )
-            except Exception as e:
-                logger.info(f"{self.alias}: save file error:{e}")
-                warning_box = QtWidgets.QMessageBox(
+            except PermissionError as e:
+                logger.info(f"{self._alias}: save file error:{e}")
+                critical_box = QtWidgets.QMessageBox(
                     QtWidgets.QMessageBox.Icon.Warning,
                     "warning",
                     f"Save file error: Please check if the file path exists and is available for writing.",
                 )
-                warning_box.exec()
+                critical_box.exec()
+                return
+            except Exception as e:
+                logger.error(f"{self._alias}: save file error:{e}")
+                critical_box = QtWidgets.QMessageBox(
+                    QtWidgets.QMessageBox.Icon.Critical,
+                    "critical",
+                    f"崩了，只能看看日志发生了什么",
+                )
+                critical_box.exec()
+                return
+            self._original_content = current_content
+            self.prepare_original_data()
+            # self._highlight_engine.highlight_cursor(self, "normal")
+            # self.NewPlainText(self._original_content)
             information_box = QtWidgets.QMessageBox(
                 QtWidgets.QMessageBox.Icon.Information,
                 "Saved Successfully",
-                f"There are {self.numberofmodification} key-value lines changed in the file.",
+                f"There are {keyvaluecount} key-value lines and {sectioncount} node changed by you.",
+            )
+            logger.info(
+                f"There are {keyvaluecount} key-value lines and {sectioncount} node changed by you."
             )
             information_box.exec()
+
         else:
-            logger.critical(f"{self.alias}: unknown textmode:{self.textmode.name}")
+            logger.critical(f"{self._alias}: unknown textmode:{self._textmode.name}")
+        self._editbyuser = False
 
     def construct_diff_dict(self, opponent_dict: dict[str, dict[str, str]]):
         self._diff_dict = self._diff_engine.diff_dict_by_dict(
-            self.originalcontent, opponent_dict, self.alias
+            self._original_content, opponent_dict, self._alias
         )
 
     def output_diff_dict(self):
-        self.editbyuser = False
+        self._editbyuser = False
         self.clear()
         cursor = self.textCursor()
 
         self._diff_engine.output_diff_dict(self._diff_dict, cursor.insertText)
 
-        logger.debug(f"{self.alias}: switch to DIFF MODE")
-        self.textmode = enumtypes.TextMode.DIFF
+        logger.debug(f"{self._alias}: switch to DIFF MODE")
+        self._textmode = enumtypes.TextMode.DIFF
         self.savebutton.setText(self._translate("MainWindow", f"同步差异到文件"))
         self.savebutton.setEnabled(True)
         self.label.setText(
-            self._translate("MainWindow", f"差异编辑模式: {self.fileoriginalfullpath}")
+            self._translate(
+                "MainWindow", f"差异编辑模式: {self._file_original_full_path}"
+            )
         )
-        self.editbyuser = True
+        self._editbyuser = True
 
-    def prepareoriginaldict(self):
+    def prepare_original_data(self):
         if (
-            self.textmode == enumtypes.TextMode.FROMFILE
-            or self.textmode == enumtypes.TextMode.DIFF
+            self._textmode == enumtypes.TextMode.FROMFILE
+            or self._textmode == enumtypes.TextMode.DIFF
         ):
-            logger.debug(f"{self.alias}: using the saved content to compute dict")
-            self._original_dict = helper.parse_string(self.originalcontent)
-        elif self.textmode == enumtypes.TextMode.FROMUSER:
-            logger.debug(f"{self.alias}: using the content in window to compute dict")
-            self.originalcontent = self.toPlainText()
-            self._original_dict = helper.parse_string(self.originalcontent)
+            logger.debug(f"{self._alias}: using the existing content to compute dict")
+        elif self._textmode == enumtypes.TextMode.FROMUSER:
+            logger.debug(f"{self._alias}: using the content in window to compute dict")
+            self._original_content = self.toPlainText()
+
+        if self._master is None:
+            self._original_list = helper.parse_string_tolist(self._original_content)
+        logger.info(f"{self._alias} has prepared its original list")
+        self._original_dict = helper.parse_string_todict(self._original_content)
+        logger.info(f"{self._alias} has prepared its original dict")
 
     def search_in_editor(self):
         # 从文本的开头开始查找
@@ -323,7 +396,7 @@ class DrapDropTextEdit(LineNumberEditor):
         # 弹出搜索框
         logger.debug("show search dialog")
         text, ok = QtWidgets.QInputDialog.getText(
-            self.parent(), f"Search in {self.alias}", "根据光标位置搜索下一个:"
+            self.parent(), f"Search in {self._alias}", "根据光标位置搜索下一个:"
         )
         if ok and text:
             # 查找文本
@@ -336,113 +409,34 @@ class DrapDropTextEdit(LineNumberEditor):
                     warning_box = QtWidgets.QMessageBox(
                         QtWidgets.QMessageBox.Icon.Warning,
                         "warning",
-                        f" {self.alias}中没有找到哦",
+                        f" {self._alias}中没有找到哦",
                     )
                     warning_box.exec()
 
-    """    
-    def output_diff_by_stringindict(self,opponent_dict:dict):
-        self.editbyuser=False
+    def NewPlainText(self, content: str):
+        self._editbyuser = False
         self.clear()
-        self.diff_dict={}
-        green_format = QTextCharFormat()
-        green_format.setBackground(QColor("green"))
-        yellow_format = QTextCharFormat()
-        yellow_format.setBackground(QColor("yellow"))
-        red_format = QTextCharFormat()
-        red_format.setBackground(QColor("red"))
-        normal_format = QTextCharFormat()
-        
-        logger.info("start compare diff by string")
-        if self.fileoriginalfullpath is None:
-            content=self.toPlainText()
-        else:
-            content=self.fileoriginalcontent
-        lines=content.split('\n')
-        current_section=None
-        self.diff_dict[current_section]={}
-        sectionhasdifference=False
-        cursor=self.textCursor()
-        for line in lines:
-            line=line.strip()
-            logger.debug(f"line has {line}; section has value:{sectionhasdifference}")
-            if line.startswith('[') and line.endswith(']'):
-                if current_section in opponent_dict:
-                    for key,value in opponent_dict[current_section].items():
-                        logger.debug(f"missing section:{current_section},key:{key},value:{value}")
-                        cursor.insertText(f"missing:{key} = {value}\n",red_format)
-                        self.diff_dict[current_section][key]=(value,enumtypes.DiffType.REMOVED)
-                    del opponent_dict[current_section]            
-                if sectionhasdifference == False:
-                    cursor.movePosition(QtGui.QTextCursor.MoveOperation.PreviousBlock,cursor.MoveMode.KeepAnchor)
-                    logger.debug(f"clearing {cursor.block().text()}")
-                    cursor.removeSelectedText()
-                    logger.debug(f"after clearing {cursor.block().text()}")
-                current_section=line[1:-1]
-                logger.debug(f"current section={current_section}")
-                self.diff_dict[current_section]={}
-                sectionhasdifference=False
-                logger.debug(f"new section:{current_section}")
-                cursor.insertText(f"{line}\n",normal_format) 
-            elif '=' in line:             
-                key,value =line.split('=',1)
-                key=key.strip()
-                value=value.strip()
-                if current_section in opponent_dict and key in opponent_dict[current_section]:
-                    if value!=opponent_dict[current_section][key]:
-                        logger.debug(f"insert yellow: section:{current_section},key:{key},value:{value}")
-                        cursor.insertText(f"{line}\n",yellow_format)
-                        self.diff_dict[current_section][key]=(value,enumtypes.DiffType.MODIFIED)
-                        sectionhasdifference=True
-                    del opponent_dict[current_section][key]
-                else:
-                    logger.debug(f"insert green: section:{current_section},key:{key},value:{value}")
-                    cursor.insertText(f"{line}\n",green_format)
-                    self.diff_dict[current_section][key]=(value,enumtypes.DiffType.ADDED)
-                    sectionhasdifference=True
-        if current_section in opponent_dict:
-            for key,value in opponent_dict[current_section].items():
-                logger.debug(f"missing section:{current_section},key:{key},value:{value}")
-                cursor.insertText(f"missing:{key} = {value}\n",red_format)
-                self.diff_dict[current_section][key]=(value,enumtypes.DiffType.REMOVED)
-            del opponent_dict[current_section]            
-        if sectionhasdifference == False:
-            cursor.movePosition(QtGui.QTextCursor.MoveOperation.PreviousBlock,cursor.MoveMode.KeepAnchor)
-            logger.debug(f"clearing {cursor.block().text()}")
-            cursor.removeSelectedText()
-            logger.debug(f"after clearing {cursor.block().text()}")
-        current_section = None
-        
-        
-        logger.debug(f"missing sections:{opponent_dict}")
-        cursor.movePosition(cursor.MoveOperation.End,cursor.MoveMode.MoveAnchor)
-        logger.debug(
-            f"cursor line number:{cursor.block().lineCount()},cursor block content:{cursor.block().text()}"
+        self.setCurrentCharFormat(QtGui.QTextCharFormat())
+        self.setPlainText(content)
+        self._original_extraselections = []
+        self._editbyuser = True
+
+    def find_next_extraselection(self):
+        currentblocknumber = self.textCursor().blockNumber()
+        for extraselection in self._original_extraselections:
+            extraselectionblock = extraselection.cursor.block()
+            if extraselectionblock.isValid():
+                extraselectionblocknumber = extraselectionblock.blockNumber()
+                logger.debug(f"current block : {currentblocknumber}, extraselection block : {extraselectionblocknumber}")
+                if currentblocknumber < extraselectionblocknumber:
+                    logger.info(f"found the next diff at block: {extraselectionblocknumber}")
+                    self.setTextCursor(extraselection.cursor)
+                    self.moveCursor(QtGui.QTextCursor.MoveOperation.EndOfBlock)
+                    self.setFocus() 
+                    return
+        warning_box = QtWidgets.QMessageBox(
+            QtWidgets.QMessageBox.Icon.Warning,
+            "warning",
+            f" {self._alias} 从光标到文件底，没有找到下一个差异",
         )
-        for missing_section in opponent_dict:
-            logger.debug(
-                f"cursor position:{cursor.position()},cursor block content:{cursor.block().text()}"
-            )
-            cursor.insertText(f"missing section:[{missing_section}]\n",red_format)
-            current_section=missing_section
-            self.diff_dict[missing_section]={}
-            logger.debug(f"currrent missing section:[{missing_section}]")
-            for key, value in opponent_dict[missing_section].items():
-                logger.debug(f"=========missing start=========")
-                logger.debug(
-                    f"cursor position:{cursor.position()},cursor block content:{cursor.block().text()}"
-                )
-                cursor.insertText(f"missing:{key} = {value}\n",red_format)
-                self.diff_dict[current_section][key]=(value,enumtypes.DiffType.REMOVED)
-                logger.debug(
-                    f"cursor position:{cursor.position()},cursor block content:{cursor.block().text()}"
-                )
-                logger.debug(f"=========missing stop=========")
-                
-        logger.debug("switch to DIFF MODE") 
-        self.textmode=enumtypes.TextMode.DIFF
-        self.savebutton.setText(self._translate("MainWindow", f"同步差异到文件(功能未完成)"))
-        self.label.setText(self._translate("MainWindow", f"差异编辑模式: {self.fileoriginalfullpath}"))
-        self.editbyuser=True
-        
-    """
+        warning_box.exec()

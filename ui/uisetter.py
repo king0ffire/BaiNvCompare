@@ -1,13 +1,14 @@
 from PyQt6 import QtWidgets, QtCore,QtGui
+from core import diffengine, highlightengine
 from ui.textviewer import DrapDropTextEdit
 import logging
-from util import helper
+from util import helper,enumtypes
 
 logger = logging.getLogger(__name__)
 
 
 class Ui_MainWindow_2(object):
-    def setupUi(self, MainWindow):
+    def setupUi(self, MainWindow:QtWidgets.QMainWindow):
         self.MainWindow=MainWindow
         MainWindow.setObjectName("MainWindow")
         MainWindow.resize(1124, 901)
@@ -15,35 +16,41 @@ class Ui_MainWindow_2(object):
         self.centralwidget.setObjectName("centralwidget")
         self.gridLayout = QtWidgets.QGridLayout(self.centralwidget)
         self.gridLayout.setObjectName("gridLayout")
-        self.pushButton_2 = QtWidgets.QPushButton(parent=self.centralwidget)
-        self.pushButton_2.setObjectName("pushButton_2")
-        self.gridLayout.addWidget(self.pushButton_2, 2, 2, 1, 1)
-        self.textEdit = DrapDropTextEdit(parent=self.centralwidget, alias="左窗口")
-        self.textEdit.setMinimumSize(QtCore.QSize(550, 763))
-        self.textEdit.setObjectName("textEdit")
-        self.gridLayout.addWidget(self.textEdit, 1, 0, 1, 2)
-        self.textEdit_2 = DrapDropTextEdit(parent=self.centralwidget, alias="右窗口")
-        self.textEdit_2.setMinimumSize(QtCore.QSize(550, 763))
-        self.textEdit_2.setObjectName("textEdit_2")
-        self.gridLayout.addWidget(self.textEdit_2, 1, 2, 1, 2)
-        self.pushButton_3 = QtWidgets.QPushButton(parent=self.centralwidget)
-        self.pushButton_3.setObjectName("pushButton_3")
-        self.gridLayout.addWidget(self.pushButton_3, 3, 0, 1, 4)
-        self.pushButton_5 = QtWidgets.QPushButton(parent=self.centralwidget)
-        self.pushButton_5.setObjectName("pushButton_5")
-        self.gridLayout.addWidget(self.pushButton_5, 2, 3, 1, 1)
-        self.pushButton = QtWidgets.QPushButton(parent=self.centralwidget)
-        self.pushButton.setObjectName("pushButton")
-        self.gridLayout.addWidget(self.pushButton, 2, 0, 1, 1)
-        self.label_2 = QtWidgets.QLabel(parent=self.centralwidget)
-        self.label_2.setObjectName("label_2")
-        self.gridLayout.addWidget(self.label_2, 0, 2, 1, 1)
-        self.pushButton_4 = QtWidgets.QPushButton(parent=self.centralwidget)
-        self.pushButton_4.setObjectName("pushButton_4")
-        self.gridLayout.addWidget(self.pushButton_4, 2, 1, 1, 1)
-        self.label = QtWidgets.QLabel(parent=self.centralwidget)
-        self.label.setObjectName("label")
-        self.gridLayout.addWidget(self.label, 0, 0, 1, 1)
+        self.pushButton_left_load = QtWidgets.QPushButton(parent=self.centralwidget)
+        self.pushButton_left_load.setObjectName("pushButton_2")
+        self.gridLayout.addWidget(self.pushButton_left_load, 2, 2, 1, 1)
+        self.textEdit_master = DrapDropTextEdit(parent=self.centralwidget, alias="左窗口")
+        self.textEdit_master.setMinimumSize(QtCore.QSize(550, 763))
+        self.textEdit_master.setObjectName("textEdit")
+        self.gridLayout.addWidget(self.textEdit_master, 1, 0, 1, 2)
+        self.textEdit_slave = DrapDropTextEdit(parent=self.centralwidget,master=self.textEdit_master, alias="右窗口")
+        self.textEdit_master.bindslave(self.textEdit_slave)
+        self.textEdit_slave.setMinimumSize(QtCore.QSize(550, 763))
+        self.textEdit_slave.setObjectName("textEdit_2")
+        self.gridLayout.addWidget(self.textEdit_slave, 1, 2, 1, 2)
+        self.pushButton_refresh_diff = QtWidgets.QPushButton(parent=self.centralwidget)
+        self.pushButton_refresh_diff.setMinimumSize(QtCore.QSize(0, 40))
+        self.pushButton_refresh_diff.setObjectName("pushButton_3")
+        self.gridLayout.addWidget(self.pushButton_refresh_diff, 3, 0, 1, 2)
+        self.pushButton_right_save = QtWidgets.QPushButton(parent=self.centralwidget)
+        self.pushButton_right_save.setObjectName("pushButton_5")
+        self.gridLayout.addWidget(self.pushButton_right_save, 2, 3, 1, 1)
+        self.pushButton_right_load = QtWidgets.QPushButton(parent=self.centralwidget)
+        self.pushButton_right_load.setObjectName("pushButton")
+        self.gridLayout.addWidget(self.pushButton_right_load, 2, 0, 1, 1)
+        self.pushButton_next_diff = QtWidgets.QPushButton(parent=self.centralwidget)
+        self.pushButton_next_diff.setMinimumSize(QtCore.QSize(0, 40))
+        self.pushButton_next_diff.setObjectName("pushButton_6")
+        self.gridLayout.addWidget(self.pushButton_next_diff, 3, 2, 1, 2)
+        self.label_right = QtWidgets.QLabel(parent=self.centralwidget)
+        self.label_right.setObjectName("label_2")
+        self.gridLayout.addWidget(self.label_right, 0, 2, 1, 1)
+        self.pushButton_left_save = QtWidgets.QPushButton(parent=self.centralwidget)
+        self.pushButton_left_save.setObjectName("pushButton_4")
+        self.gridLayout.addWidget(self.pushButton_left_save, 2, 1, 1, 1)
+        self.label_left = QtWidgets.QLabel(parent=self.centralwidget)
+        self.label_left.setObjectName("label")
+        self.gridLayout.addWidget(self.label_left, 0, 0, 1, 1)
         MainWindow.setCentralWidget(self.centralwidget)
         self.statusbar = QtWidgets.QStatusBar(parent=MainWindow)
         self.statusbar.setObjectName("statusbar")
@@ -53,43 +60,55 @@ class Ui_MainWindow_2(object):
         self.menubar.setObjectName("menubar")
         MainWindow.setMenuBar(self.menubar)
 
+        self._diff_engine=diffengine.DiffEngine_sync()
+        self._highlight_engine=highlightengine.HighLightEngine()
+        self.textEdit_master.sync_scroll_bar()
+        self.textEdit_slave.sync_scroll_bar()
         shortcut=QtGui.QShortcut(QtGui.QKeySequence("F5"),MainWindow)
         shortcut.activated.connect(self.diffandrefresh)
         shortcut = QtGui.QShortcut(QtGui.QKeySequence("Ctrl+F"), MainWindow)
         shortcut.activated.connect(self.handle_search)
+        self.textEdit_master.focusOutEvent=self.on_focus_out_edit1
+        self.textEdit_slave.focusOutEvent=self.on_focus_out_edit2
+        self.textEdit_master.setFocus()
         
-        self.pushButton_3.setShortcut("F5")
-        self.pushButton_3.clicked.connect(self.diffandrefresh)
-        self.pushButton.clicked.connect(self.textEdit.uploadfile)
-        self.textEdit_2.bindsavebutton(self.pushButton_5)
-        self.textEdit.bindsavebutton(self.pushButton_4)
-        self.textEdit.bindlabel(self.label)
-        self.textEdit_2.bindlabel(self.label_2)
-        self.pushButton_2.clicked.connect(self.textEdit_2.uploadfile)
-        self.pushButton_4.clicked.connect(self.textEdit.savecurrenttextintofile)
-        self.pushButton_4.setEnabled(False)
-        self.pushButton_5.clicked.connect(self.textEdit_2.savecurrenttextintofile)
-        self.pushButton_5.setEnabled(False)
+        self.pushButton_refresh_diff.setShortcut("F5")
+        self.pushButton_refresh_diff.clicked.connect(self.diffandrefresh)
+        self.pushButton_next_diff.clicked.connect(self.handle_next_diff)
+        #self.pushButton_next_diff.setEnabled(False)
+        self.pushButton_right_load.clicked.connect(self.textEdit_master.uploadfile)
+        self.textEdit_slave.bindsavebutton(self.pushButton_right_save)
+        self.textEdit_master.bindsavebutton(self.pushButton_left_save)
+        self.textEdit_master.bindlabel(self.label_left)
+        self.textEdit_slave.bindlabel(self.label_right)
+        self.pushButton_left_load.clicked.connect(self.textEdit_slave.uploadfile)
+        self.pushButton_left_save.clicked.connect(self.textEdit_master.save_current_text_tofile)
+        self.pushButton_left_save.setEnabled(False)
+        self.pushButton_right_save.clicked.connect(self.textEdit_slave.save_current_text_tofile)
+        self.pushButton_right_save.setEnabled(False)
+        
+
 
         self.retranslateUi(MainWindow)
         QtCore.QMetaObject.connectSlotsByName(MainWindow)
 
-    def retranslateUi(self, MainWindow):
+    def retranslateUi(self, MainWindow:QtWidgets.QMainWindow):
         _translate = QtCore.QCoreApplication.translate
-        MainWindow.setWindowTitle(_translate("MainWindow", "Config Merge"))
-        self.pushButton_3.setText(_translate("MainWindow", "刷新差异 (F5)"))
-        self.pushButton_5.setText(_translate("MainWindow", "保存"))
-        self.pushButton_2.setText(_translate("MainWindow", "导入"))
-        self.pushButton.setText(_translate("MainWindow", "导入"))
-        self.pushButton_4.setText(_translate("MainWindow", "保存"))
-        self.label_2.setText(_translate("MainWindow", "编辑模式"))
-        self.label.setText(_translate("MainWindow", "编辑模式"))
+        MainWindow.setWindowTitle(_translate("MainWindow", "BaiNvCompare"))
+        self.pushButton_refresh_diff.setText(_translate("MainWindow", "刷新差异 (F5)"))
+        self.pushButton_right_save.setText(_translate("MainWindow", "保存"))
+        self.pushButton_left_load.setText(_translate("MainWindow", "导入"))
+        self.pushButton_right_load.setText(_translate("MainWindow", "导入"))
+        self.pushButton_left_save.setText(_translate("MainWindow", "保存"))
+        self.label_right.setText(_translate("MainWindow", "编辑模式"))
+        self.label_left.setText(_translate("MainWindow", "编辑模式"))
+        self.pushButton_next_diff.setText(_translate("MainWindow", "下一处原始差异"))
 
     def diffandrefresh(self):
         warning_box = None
         try:
-            self.textEdit.prepareoriginaldict()
-            logging.debug(f"debug {self.textEdit.alias}original dict{self.textEdit._original_dict}")
+            self.textEdit_master.prepare_original_data()
+            logging.debug(f"debug {self.textEdit_master._alias}original dict{self.textEdit_master._original_list}")
         except helper.InvaildInputError as e:
             warning_box = QtWidgets.QMessageBox(
                 QtWidgets.QMessageBox.Icon.Warning,
@@ -98,8 +117,8 @@ class Ui_MainWindow_2(object):
             )
             warning_box.exec()
         try:
-            self.textEdit_2.prepareoriginaldict()
-            logging.debug(f"debug {self.textEdit_2.alias}original dict{self.textEdit_2._original_dict}")
+            self.textEdit_slave.prepare_original_data()
+            logging.debug(f"debug {self.textEdit_slave._alias}original dict{self.textEdit_slave._original_dict}")
         except helper.InvaildInputError as e:
             warning_box = QtWidgets.QMessageBox(
                 QtWidgets.QMessageBox.Icon.Warning,
@@ -108,15 +127,48 @@ class Ui_MainWindow_2(object):
             )
             warning_box.exec()
         if warning_box is None:
-            self.textEdit_2.construct_diff_dict(self.textEdit._original_dict)
-            self.textEdit_2.output_diff_dict()
-            self.textEdit.construct_diff_dict(self.textEdit_2._original_dict)
-            self.textEdit.output_diff_dict()
+            master_new_content,slave_new_content,diff_list=self._diff_engine.string_all_and_parsed_diff_2(self.textEdit_master._original_list, self.textEdit_slave._original_dict)
+            self.textEdit_master.NewPlainText(master_new_content)
+            self.textEdit_slave.NewPlainText(slave_new_content)
+            self.textEdit_master._textmode=enumtypes.TextMode.DIFF
+            self.textEdit_slave._textmode=enumtypes.TextMode.DIFF
+            self.textEdit_master._original_extraselections=self._highlight_engine.extraselectLines(diff_list, self.textEdit_master,False, self.textEdit_master._alias)
+            self.textEdit_slave._original_extraselections=self._highlight_engine.extraselectLines(diff_list, self.textEdit_slave,True, self.textEdit_slave._alias)
+            
 
     
     def handle_search(self):
-        if self.textEdit.hasFocus():
-            self.textEdit.search_in_editor()
-        elif self.textEdit_2.hasFocus():
-            self.textEdit_2.search_in_editor()
+        if self.textEdit_master.hasFocus():
+            self.textEdit_master.search_in_editor()
+        elif self.textEdit_slave.hasFocus():
+            self.textEdit_slave.search_in_editor()
+            
+    def handle_next_diff(self):
+        if self.textEdit_master._textmode==enumtypes.TextMode.DIFF and self.textEdit_master._textmode==enumtypes.TextMode.DIFF:
+            if self.textEdit_master.hasFocus():
+                self.textEdit_slave.find_next_extraselection()
+            elif self.textEdit_slave.hasFocus():
+                self.textEdit_master.find_next_extraselection()
 
+        else:
+            warning_box = QtWidgets.QMessageBox(
+                QtWidgets.QMessageBox.Icon.Warning,
+                "warning",
+                f"Make sure you have refreshed their diff.",
+            )
+            warning_box.exec()
+    
+    def on_focus_out_edit1(self, e:QtGui.QFocusEvent):
+        # 如果plain_text_edit1失去焦点，则将焦点设置到plain_text_edit2
+        if not self.textEdit_slave.hasFocus():
+            self.textEdit_slave.setFocus()
+        # 调用原始的 focusOutEvent
+        QtWidgets.QPlainTextEdit.focusOutEvent(self.textEdit_master, e)
+        
+    def on_focus_out_edit2(self, e:QtGui.QFocusEvent):
+        # 如果plain_text_edit1失去焦点，则将焦点设置到plain_text_edit2
+        if not self.textEdit_master.hasFocus():
+            self.textEdit_master.setFocus()
+        # 调用原始的 focusOutEvent
+        QtWidgets.QPlainTextEdit.focusOutEvent(self.textEdit_slave, e)
+        

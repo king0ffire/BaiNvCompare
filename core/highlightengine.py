@@ -2,7 +2,7 @@ from PyQt6.QtGui import QTextCharFormat, QColor
 from PyQt6 import QtWidgets, QtCore, QtGui
 import util.enumtypes as enumtypes
 import logging
-from typing import Callable
+from typing import Callable,Iterable
 
 logger = logging.getLogger(__name__)
 
@@ -64,15 +64,19 @@ class HighLightEngine:
         self._cyan_format.setBackground(QColor("cyan"))
         self._normal_format = QtGui.QTextCharFormat()
 
+    def clearExtraselections(self, text_edit: QtWidgets.QPlainTextEdit):
+        text_edit.setExtraSelections([])
+
+        
     def highlightCurrentLine(
         self,
         cursor: QtGui.QTextCursor,
-        setExtraSelections_handle: Callable[[QtWidgets.QTextEdit.ExtraSelection], None],
+        setExtraSelections_handle: Callable[[Iterable['QtWidgets.QTextEdit.ExtraSelection']], None],
     ):
         extraSelections = []
         selection = QtWidgets.QTextEdit.ExtraSelection()
 
-        selection.format.setBackground(self._lighter_yellow_format)
+        selection.format.setBackground(QColor("yellow").lighter(160))
         selection.format.setProperty(
             QtGui.QTextFormat.Property.FullWidthSelection, True
         )
@@ -81,6 +85,68 @@ class HighLightEngine:
         extraSelections.append(selection)
 
         setExtraSelections_handle(extraSelections)
+
+    def extraselectCurrentLine(
+        self,
+        text_edit: QtWidgets.QPlainTextEdit,
+    ):
+        selection=QtWidgets.QTextEdit.ExtraSelection()
+        selection.format.setProperty( QtGui.QTextFormat.Property.FullWidthSelection, True      )
+        selection.format.setBackground(QColor("cyan"))
+        cursor=text_edit.textCursor()
+        cursor.movePosition(cursor.MoveOperation.StartOfBlock)
+        selection.cursor=cursor
+        return selection
+
+    def extraselectLine(
+        self,
+        text_edit: QtWidgets.QPlainTextEdit,
+        block_number:int,
+    ):  
+        selection=QtWidgets.QTextEdit.ExtraSelection()
+        selection.format.setProperty( QtGui.QTextFormat.Property.FullWidthSelection, True)
+        selection.format.setBackground(QColor("cyan"))
+        cursor=QtGui.QTextCursor(text_edit.document().findBlockByNumber(block_number))
+        cursor.clearSelection()
+        selection.cursor=cursor
+        return selection
+    def extraselectLines(
+        self,
+        list_of_diff_lines: list[tuple[str, enumtypes.DiffType]],
+        text_edit: QtWidgets.QPlainTextEdit,
+        is_slave=False,
+        alias="",
+    )->list[QtWidgets.QTextEdit.ExtraSelection]:  
+        extraSelections = []
+        doc=text_edit.document()
+        if not is_slave:
+            add_color=QColor("green")
+            remove_color=QColor("red")
+        else:
+            add_color=QColor("red")
+            remove_color=QColor("green")
+        for line in list_of_diff_lines:
+            block=doc.findBlockByLineNumber(int(line[0])-1)
+            if block.isValid():
+                selection=QtWidgets.QTextEdit.ExtraSelection()
+                selection.format.setProperty(
+            QtGui.QTextFormat.Property.FullWidthSelection, True
+                )
+                if line[1] == enumtypes.DiffType.ADDED:
+                    selection.format.setBackground(add_color)
+                elif line[1] == enumtypes.DiffType.MODIFIED:
+                    selection.format.setBackground(QColor("yellow"))
+                elif line[1]==enumtypes.DiffType.REMOVED:
+                    selection.format.setBackground(remove_color)
+                cursor=QtGui.QTextCursor(block)
+                cursor.clearSelection()
+                selection.cursor=cursor
+                extraSelections.append(selection)
+            else:
+                logger.error(f"{alias} line {line[0]} is invalid")
+                continue
+        text_edit.setExtraSelections(extraSelections)
+        return extraSelections
 
     def highlight_cursor_with_selection(self, cursor: QtGui.QTextCursor):
         cursor.setCharFormat(self._cyan_format)
@@ -98,6 +164,9 @@ class HighLightEngine:
             format = self._green_format
         elif color == "normal":
             format = self._normal_format
+        else:
+            logger.error(f"unknown color")
+            return        
         document.setCurrentCharFormat(format)
 
     def highlight_line(self, cursor, format):
@@ -114,7 +183,7 @@ class HighLightEngine:
         cursor.mergeCharFormat(format)
 
     def highlight_text(
-        self, text_edit: QtWidgets.QTextEdit, comparison_result, is_opposite=False
+        self, text_edit: QtWidgets.QPlainTextEdit, comparison_result, is_opposite=False
     ):
         green_format = QTextCharFormat()
         green_format.setBackground(QColor("green"))

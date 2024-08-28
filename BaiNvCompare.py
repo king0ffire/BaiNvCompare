@@ -5,14 +5,14 @@ from PyQt6 import QtWidgets
 import sys
 
 
-def configure_logger(location, level=logging.DEBUG):
+def configure_logger(location:str, level:int=logging.DEBUG):
     logger = logging.getLogger()
     logger.setLevel(level)
 
     que = queue.Queue(-1)
     queue_handler = logging.handlers.QueueHandler(que)
     file_handler = logging.FileHandler(
-        os.path.join(location, "socket_server.log"), mode="w"
+        os.path.join(location, "BaiNvCompare.log"), mode="w"
     )
     queue_handler.setLevel(level)
     file_handler.setLevel(level)
@@ -46,7 +46,7 @@ if __name__ == "__main__":
 
     logger = logging.getLogger(__name__)
     app = QtWidgets.QApplication(sys.argv)
-    QtWidgets.QApplication.setCursorFlashTime(500)
+    app.setCursorFlashTime(1000)
     ui = uisetter.Ui_MainWindow_2()
     window = QtWidgets.QMainWindow()
     ui.setupUi(window)

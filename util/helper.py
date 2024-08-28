@@ -18,7 +18,7 @@ def split_filename(filename):
     return root, ext
 
 
-def parse_string(content) -> dict[str, dict[str, str]]:
+def parse_string_todict(content) -> dict[str, dict[str, str]]:
     result = {}
     current_category = None
     result[current_category] = {}
@@ -38,6 +38,25 @@ def parse_string(content) -> dict[str, dict[str, str]]:
             raise InvaildInputError(numb)
     return result
 
+
+def parse_string_tolist(content:str) -> list[tuple[str]|tuple[str,str]]: #section key value
+    result = []
+    current_category = None
+    lines = content.splitlines()
+    for numb, line in enumerate(lines):
+        line = line.strip()
+        if line.startswith("[") and line.endswith("]"):
+            current_category = line[1:-1]
+            result.append((current_category,))
+        elif "=" in line:
+            key, value = line.split("=", 1)
+            result.append((key.strip(),value.strip()))
+        elif line == "":
+            continue
+        else:
+            logger.error(f"Error parsing line {numb}: {line}")
+            raise InvaildInputError(numb)
+    return result
 
 def parse_diffcontent_todict(content) -> dict[str, dict[str, str]]:
     result = {}
@@ -89,7 +108,7 @@ def diff_diff_dict(
             for key, value in keys.items():
                 if key in originaldict[section]:
                     if originaldict[section][key][1] == enumtypes.DiffType.REMOVED:
-                        result[section][key] = (value, enumtypes.DiffType.ADD)
+                        result[section][key] = (value, enumtypes.DiffType.ADDED)
                         logger.debug(
                             f"current modi: section:{section}, key={key}, newvalue={value}, type={result[section][key][1]}"
                         )
