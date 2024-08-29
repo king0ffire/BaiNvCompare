@@ -89,7 +89,7 @@ class HighLightEngine:
     def extraselectCurrentLine(
         self,
         text_edit: QtWidgets.QPlainTextEdit,
-    ):
+    )->QtWidgets.QTextEdit.ExtraSelection:
         selection=QtWidgets.QTextEdit.ExtraSelection()
         selection.format.setProperty( QtGui.QTextFormat.Property.FullWidthSelection, True      )
         selection.format.setBackground(QColor("cyan"))
@@ -102,7 +102,7 @@ class HighLightEngine:
         self,
         text_edit: QtWidgets.QPlainTextEdit,
         block_number:int,
-    ):  
+    )->QtWidgets.QTextEdit.ExtraSelection:  
         selection=QtWidgets.QTextEdit.ExtraSelection()
         selection.format.setProperty( QtGui.QTextFormat.Property.FullWidthSelection, True)
         selection.format.setBackground(QColor("cyan"))
@@ -110,6 +110,7 @@ class HighLightEngine:
         cursor.clearSelection()
         selection.cursor=cursor
         return selection
+    
     def extraselectLines(
         self,
         list_of_diff_lines: list[tuple[str, enumtypes.DiffType]],

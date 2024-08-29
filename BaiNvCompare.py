@@ -37,7 +37,7 @@ def uncaught_exception(exctype, value, tb):
 if __name__ == "__main__":
     if getattr(sys, "frozen", False):
         apppath = os.path.dirname(sys.executable)
-        queuelistener = configure_logger(apppath, logging.INFO)
+        queuelistener = configure_logger(apppath, logging.DEBUG)
     else:
         apppath = os.path.dirname(__file__)
         queuelistener = configure_logger(apppath)

@@ -19,11 +19,11 @@ class Ui_MainWindow_2(object):
         self.pushButton_left_load = QtWidgets.QPushButton(parent=self.centralwidget)
         self.pushButton_left_load.setObjectName("pushButton_2")
         self.gridLayout.addWidget(self.pushButton_left_load, 2, 2, 1, 1)
-        self.textEdit_master = DrapDropTextEdit(parent=self.centralwidget, alias="左窗口")
+        self.textEdit_master = DrapDropTextEdit(ui=self, parent=self.centralwidget, alias="左窗口")
         self.textEdit_master.setMinimumSize(QtCore.QSize(550, 763))
         self.textEdit_master.setObjectName("textEdit")
         self.gridLayout.addWidget(self.textEdit_master, 1, 0, 1, 2)
-        self.textEdit_slave = DrapDropTextEdit(parent=self.centralwidget,master=self.textEdit_master, alias="右窗口")
+        self.textEdit_slave = DrapDropTextEdit(ui=self,parent=self.centralwidget,master=self.textEdit_master, alias="右窗口")
         self.textEdit_master.bindslave(self.textEdit_slave)
         self.textEdit_slave.setMinimumSize(QtCore.QSize(550, 763))
         self.textEdit_slave.setObjectName("textEdit_2")
@@ -68,9 +68,8 @@ class Ui_MainWindow_2(object):
         shortcut.activated.connect(self.diffandrefresh)
         shortcut = QtGui.QShortcut(QtGui.QKeySequence("Ctrl+F"), MainWindow)
         shortcut.activated.connect(self.handle_search)
-        self.textEdit_master.focusOutEvent=self.on_focus_out_edit1
-        self.textEdit_slave.focusOutEvent=self.on_focus_out_edit2
-        self.textEdit_master.setFocus()
+
+        self._last_focus=self.textEdit_master._alias
         
         self.pushButton_refresh_diff.setShortcut("F5")
         self.pushButton_refresh_diff.clicked.connect(self.diffandrefresh)
@@ -86,6 +85,8 @@ class Ui_MainWindow_2(object):
         self.pushButton_left_save.setEnabled(False)
         self.pushButton_right_save.clicked.connect(self.textEdit_slave.save_current_text_tofile)
         self.pushButton_right_save.setEnabled(False)
+        self.textEdit_master.bind_last_focus(self.set_last_focus)
+        self.textEdit_slave.bind_last_focus(self.set_last_focus)
         
 
 
@@ -94,7 +95,7 @@ class Ui_MainWindow_2(object):
 
     def retranslateUi(self, MainWindow:QtWidgets.QMainWindow):
         _translate = QtCore.QCoreApplication.translate
-        MainWindow.setWindowTitle(_translate("MainWindow", "BaiNvCompare"))
+        MainWindow.setWindowTitle(_translate("MainWindow", "BaiNvCompare  V2.0.1"))
         self.pushButton_refresh_diff.setText(_translate("MainWindow", "刷新差异 (F5)"))
         self.pushButton_right_save.setText(_translate("MainWindow", "保存"))
         self.pushButton_left_load.setText(_translate("MainWindow", "导入"))
@@ -138,17 +139,31 @@ class Ui_MainWindow_2(object):
 
     
     def handle_search(self):
-        if self.textEdit_master.hasFocus():
+        if self._last_focus==self.textEdit_master._alias:
             self.textEdit_master.search_in_editor()
-        elif self.textEdit_slave.hasFocus():
+            self.textEdit_slave.verticalScrollBar().setValue(self.textEdit_master.verticalScrollBar().value())
+            self.textEdit_slave.setFocus()
+            self.textEdit_master.setFocus()
+        elif  self._last_focus==self.textEdit_slave._alias:
             self.textEdit_slave.search_in_editor()
+            self.textEdit_master.verticalScrollBar().setValue(self.textEdit_slave.verticalScrollBar().value())
+            self.textEdit_master.setFocus()
+            self.textEdit_slave.setFocus()
+        
             
     def handle_next_diff(self):
         if self.textEdit_master._textmode==enumtypes.TextMode.DIFF and self.textEdit_master._textmode==enumtypes.TextMode.DIFF:
-            if self.textEdit_master.hasFocus():
-                self.textEdit_slave.find_next_extraselection()
-            elif self.textEdit_slave.hasFocus():
+            logger.debug(f"self._last_focus:{self._last_focus}, master scroll bar value:{self.textEdit_master.verticalScrollBar().value()}, slave scroll bar value:{self.textEdit_slave.verticalScrollBar().value()}")
+            if  self._last_focus==self.textEdit_master._alias:
                 self.textEdit_master.find_next_extraselection()
+                self.textEdit_slave.verticalScrollBar().setValue(self.textEdit_master.verticalScrollBar().value())
+                self.textEdit_slave.setFocus()
+                self.textEdit_master.setFocus()
+            elif  self._last_focus==self.textEdit_slave._alias:
+                self.textEdit_slave.find_next_extraselection()
+                self.textEdit_master.verticalScrollBar().setValue(self.textEdit_slave.verticalScrollBar().value())
+                self.textEdit_master.setFocus()
+                self.textEdit_slave.setFocus()
 
         else:
             warning_box = QtWidgets.QMessageBox(
@@ -171,4 +186,13 @@ class Ui_MainWindow_2(object):
             self.textEdit_master.setFocus()
         # 调用原始的 focusOutEvent
         QtWidgets.QPlainTextEdit.focusOutEvent(self.textEdit_slave, e)
+        
+
+    def focus_in_edit1(self,e:QtGui.QFocusEvent):
+        self._last_focus=0
+    def focus_in_edit2(self,e:QtGui.QFocusEvent):
+        self._last_focus=1
+        
+    def set_last_focus(self,focus:str|int):
+        self._last_focus=focus
         
