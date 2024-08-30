@@ -30,8 +30,9 @@ def configure_logger(location:str, level:int=logging.DEBUG):
 def uncaught_exception(exctype, value, tb):
     logger.error("Uncaught exception", exc_info=(exctype, value, tb))
     queuelistener.stop()
-    sys.__excepthook__(exctype, value, tb)
     exit(0)
+    sys.__excepthook__(exctype, value, tb)
+    
 
 
 if __name__ == "__main__":

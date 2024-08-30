@@ -5,28 +5,32 @@ logger = logging.getLogger(__name__)
 
 
 class ModifyEngine:
-    def record_modification(self,original_dict:dict[str,dict[str,str]],current_content:str)->tuple[int,int]:
+    def record_modification(self,original_dict:dict[str,dict[str,str]],current_content:str)->tuple[str,int,int,int]:
         original_dict=copy.deepcopy(original_dict)
+        new_content=[]
         keyvaluecount=0
         sectioncount=0
         current_section=None
         lines = current_content.splitlines()
         logger.info("start to record how many key-value and how many sections are changed compared to original file")
         for numb,line in enumerate(lines):
-            line = line.strip()
-            logger.debug(f"current line: {line}")
-            if line.startswith("[") and line.endswith("]"):
+            stripedline = line.strip()
+            logger.debug(f"current line: {stripedline}")
+            if stripedline.startswith("[") and stripedline.endswith("]"):
+                new_content.append(stripedline)
                 if current_section in original_dict:
                     for key,value in original_dict[current_section].items():
                         keyvaluecount+=1
                         logger.debug(f"{current_section}.{key} is {enumtypes.DiffType.REMOVED}")
                     del original_dict[current_section]
-                current_section=line[1:-1]
+                current_section=stripedline[1:-1]
+
                 if current_section not in original_dict:
                     sectioncount+=1
                     logger.debug(f"new section for file: {current_section}")
-            elif "=" in line:
-                key, value = line.split("=", 1)
+            elif "=" in stripedline:
+                new_content.append(stripedline)
+                key, value = stripedline.split("=", 1)
                 key=key.strip()
                 value=value.strip()
                 if current_section in original_dict and key in original_dict[current_section]:
@@ -39,10 +43,10 @@ class ModifyEngine:
                 else:
                     keyvaluecount+=1
                     logger.debug(f"{current_section}.{key} is {enumtypes.DiffType.ADDED}")
-            elif line == "":
-                pass
+            elif stripedline == "":
+                logger.debug("empty line detected")
             else:
-                logger.error(f"Error parsing line {numb}: {line}")
+                logger.error(f"Error parsing line {numb}: {stripedline}")
                 raise helper.InvaildInputError(numb)
         if current_section in original_dict:
             for key,value in original_dict[current_section].items():
@@ -56,7 +60,7 @@ class ModifyEngine:
                 keyvaluecount+=1
                 logger.debug(f"{section}.{key} is {enumtypes.DiffType.REMOVED}")
 
-        return keyvaluecount,sectioncount
+        return "\n".join(new_content),len(new_content),keyvaluecount,sectioncount
     
     def process_diff_modification(
         self, original_content, current_diff_str, old_diff_dict,alias=""

@@ -4,7 +4,7 @@ import util.helper as helper
 import util.filemanger as filemanger
 import logging
 import util.enumtypes as enumtypes
-from typing import Callable
+from typing import Callable,cast
 
 logger = logging.getLogger(__name__)
 
@@ -59,12 +59,12 @@ class LineNumberEditor(QtWidgets.QPlainTextEdit):
             )
         )
 
-    def updateLineNumberAreaWidth(self, _):
+    def updateLineNumberAreaWidth(self, newBlockCount: int):
         self.setViewportMargins(self.lineNumberArea.lineNumberAreaWidth(), 0, 0, 0)
 
-    def updateLineNumberArea(self, rect, dy):
-        logger.debug(f"update request : dy={dy}")
+    def updateLineNumberArea(self, rect: QtCore.QRect, dy: int):
         if dy:
+            logger.debug(f"update request : dy={dy}")
             self.lineNumberArea.scroll(0, dy)
         else:
             self.lineNumberArea.update(
@@ -107,7 +107,7 @@ class DrapDropTextEdit(LineNumberEditor):
         super(DrapDropTextEdit, self).__init__(parent)
         self._ui = ui
         self._master = master
-        self._alias = alias
+        self.alias = alias
         self._original_content = ""
         self._file_original_full_path = None
         self._numberofmodification = 0
@@ -126,10 +126,10 @@ class DrapDropTextEdit(LineNumberEditor):
         self._cursor_last_last_block_length = 0
         self._line_highlighted = True
         self._current_content_block_count = 0
-
-        self.setAcceptDrops(True)
-        self.setLineWrapMode(QtWidgets.QPlainTextEdit.LineWrapMode.NoWrap)
-
+        self.setVerticalScrollBarPolicy(QtCore.Qt.ScrollBarPolicy.ScrollBarAlwaysOn)
+        self.setHorizontalScrollBarPolicy(QtCore.Qt.ScrollBarPolicy.ScrollBarAlwaysOn)
+        self.verticalScrollBar().valueChanged.connect(self.self_verticalscroll_updated)
+        self.horizontalScrollBar().valueChanged.connect(self.self_horizontalscroll_updated)
         self.blockCountChanged.connect(self.update_block_count)
         self.cursorPositionChanged.connect(
             self.update_cursor_status
@@ -144,9 +144,9 @@ class DrapDropTextEdit(LineNumberEditor):
     def bindsavebutton(self, button: QtWidgets.QPushButton):
         self.savebutton = button
 
-    def bindlabel(self, label: QtWidgets.QLabel):
-        self.label = label
-        self.label.setText(self._translate("MainWindow", "手动编辑模式"))
+    def bindlabel(self, labels: tuple[QtWidgets.QLabel,QtWidgets.QLabel]):
+        self.labels = labels
+        self.labels[0].setText(self._translate("MainWindow", "手动编辑模式:"))
 
     def bindslave(self, textedit: QtWidgets.QPlainTextEdit):
         self._slave = textedit
@@ -159,16 +159,33 @@ class DrapDropTextEdit(LineNumberEditor):
     ):  # 'self' scroll value is influenced by opponent scroll bar
         if self._master is not None:
             self._master.verticalScrollBar().valueChanged.connect(
-                lambda: self.verticalScrollBar().setValue(
-                    self._master.verticalScrollBar().value()
-                )
+                self.opponent_changed_scroll
             )
+            self._master.horizontalScrollBar().valueChanged.connect(
+                self.opponent_changed_scroll
+            )
+
         else:
             self._slave.verticalScrollBar().valueChanged.connect(
-                lambda: self.verticalScrollBar().setValue(
-                    self._slave.verticalScrollBar().value()
-                )
+                self.opponent_changed_scroll
             )
+            self._slave.horizontalScrollBar().valueChanged.connect(
+                self.opponent_changed_scroll
+            )
+
+    def force_sync_self_scroll_bar(self):
+        if self._master is not None:
+            self.verticalScrollBar().setValue(self._master.verticalScrollBar().value())
+            self.horizontalScrollBar().setValue(
+                self._master.horizontalScrollBar().value()
+            )
+            self.setFocus()
+        else:
+            self.verticalScrollBar().setValue(self._slave.verticalScrollBar().value())
+            self.horizontalScrollBar().setValue(
+                self._slave.horizontalScrollBar().value()
+            )
+            self.setFocus()
 
     def update_cursor_status(self):
         cursor = self.textCursor()
@@ -221,11 +238,10 @@ class DrapDropTextEdit(LineNumberEditor):
                     logger.debug(f"highlighting current block number:{i}")
                     logger.debug(f"{self._new_extraselections}")
             self.setExtraSelections(
-            self._original_extraselections + self._new_extraselections
-        )
+                self._original_extraselections + self._new_extraselections
+            )
         self._current_content_block_count = current_block_count
         logger.debug(f"block count changed:{self._current_content_block_count}")
-
 
     def highlight_cursor(self):
         if self._editbyuser == False:
@@ -250,10 +266,10 @@ class DrapDropTextEdit(LineNumberEditor):
             return
         self._lastmodified_block_number = linenumber
         cursor.select(cursor.SelectionType.LineUnderCursor)
-        logger.debug(f"{self._alias}: text changed:{cursor.block().text()}")
+        logger.debug(f"{self.alias}: text changed:{cursor.block().text()}")
         self._highlight_engine.highlight_cursor_with_selection(cursor)
         logger.info(
-            f"{self._alias}: highligh a modified line: {cursor.blockNumber()}, line column is: {cursor.columnNumber()}, line content is:{cursor.block().text()}"
+            f"{self.alias}: highligh a modified line: {cursor.blockNumber()}, line column is: {cursor.columnNumber()}, line content is:{cursor.block().text()}"
         )
 
     def dropEvent(self, e: QtGui.QDropEvent):
@@ -262,18 +278,18 @@ class DrapDropTextEdit(LineNumberEditor):
         try:
             super().dropEvent(e)
             for url in e.mimeData().urls():
-                logger.debug(f"{self._alias}: received file: {url}")
-                logger.debug(f"{self._alias}: received file: {url.toLocalFile()}")
+                logger.debug(f"{self.alias}: received file: {url}")
+                logger.debug(f"{self.alias}: received file: {url.toLocalFile()}")
                 if url.isLocalFile():
                     path = url.toLocalFile()
-                    logger.info(f"{self._alias}: file full path is {path}")
+                    logger.info(f"{self.alias}: file full path is {path}")
                     self._open_file(path)
             self.setFocus()
         finally:
             self._editbyuser = True
 
     def uploadfile(self):
-        logger.info(f"{self._alias}: test read file")
+        logger.info(f"{self.alias}: test read file")
         self._editbyuser = False
         try:
             file_path, file2 = QtWidgets.QFileDialog.getOpenFileName(
@@ -281,7 +297,7 @@ class DrapDropTextEdit(LineNumberEditor):
             )
             if file_path == "":
                 return
-            logger.info(f"{self._alias}: file full path is  {file_path}")
+            logger.info(f"{self.alias}: file full path is  {file_path}")
             self._open_file(file_path)
         finally:
             self._editbyuser = True
@@ -291,24 +307,61 @@ class DrapDropTextEdit(LineNumberEditor):
         root, ext = helper.split_filename(fullpath)
         self._file_original_full_path = fullpath
         if ext.endswith("gz"):
-            self.textfilenameingz, self._original_content = (
-                filemanger.load_tgz_to_string(fullpath)
-            )
-            self._highlight_engine.highlight_cursor(self, "normal")
-            self.setPlainText(self._original_content)
+            try:
+                self.textfilenameingz, self._original_content = (
+                    filemanger.load_tgz_to_string(fullpath)
+                )
+                self._highlight_engine.highlight_cursor(self, "normal")
+                self.setPlainText(self._original_content)
+            except AttributeError as e:
+                logger.error(
+                    f"{self.alias}: The file is considered as a gz file, but we failed to read it.\nThe exception message is: {e}"
+                )
+                critical_box = QtWidgets.QMessageBox(
+                    QtWidgets.QMessageBox.Icon.Warning,
+                    "warning",
+                    f"{self.alias}: The file is considered as a gz file, but we failed to read it.\nThe exception message is: {e}",
+                )
+                critical_box.exec()
+            except Exception as e:
+                logger.error(
+                    f"{self.alias}: The file is considered as a gz file, but we failed to load it.\nThe exception message is: {e}"
+                )
+                critical_box = QtWidgets.QMessageBox(
+                    QtWidgets.QMessageBox.Icon.Warning,
+                    "warning",
+                    f"{self.alias}: The file is considered as a gz file, but we failed to load it.\nThe exception message is: {e}",
+                )
+                critical_box.exec()
+                return
         else:
-            self._original_content = filemanger.load_textfile_to_string(fullpath)
-            self._highlight_engine.highlight_cursor(self, "normal")
-            self.setPlainText(self._original_content)
+            try:
+                self._original_content = filemanger.load_textfile_to_string(fullpath)
+                self._highlight_engine.highlight_cursor(self, "normal")
+                self.setPlainText(self._original_content)
+            except Exception as e:
+                logger.error(
+                    f"{self.alias}: The file is considered as a text file, but we failed to load it. The exception message is: {e}"
+                )
+                critical_box = QtWidgets.QMessageBox(
+                    QtWidgets.QMessageBox.Icon.Warning,
+                    "warning",
+                    f"{self.alias}: The file is considered as a gz file, but we failed to load it.\nThe exception message is: {e}",
+                )
+                critical_box.exec()
+                return
         self._original_extraselections = []
         self._new_extraselections = []
         self._highlight_engine.clearExtraselections(self)
         self.savebutton.setText(self._translate("MainWindow", f"保存到文件"))
         self._textmode = enumtypes.TextMode.FROMFILE
-        self.label.setText(
+        self.labels[0].setText(
             self._translate(
-                "MainWindow", f"文件编辑模式: {self._file_original_full_path}"
+                "MainWindow", f"文件编辑模式:"
             )
+        )
+        self.labels[1].setText(
+            self._translate("MainWindow", f" {self._file_original_full_path}")
         )
         self.prepare_original_data()
         self.savebutton.setEnabled(True)
@@ -316,11 +369,11 @@ class DrapDropTextEdit(LineNumberEditor):
         logger.info(f"file is open")
 
     def save_current_text_tofile(self):
-        logger.info(f"user save: {self._alias}")
+        logger.info(f"user save: {self.alias}")
         self._editbyuser = False
         try:
             if self._file_original_full_path is None:
-                logger.critical(f"{self._alias}: undefined save action")
+                logger.critical(f"{self.alias}: undefined save action")
                 return
             current_content = self.toPlainText()
             if (
@@ -329,12 +382,14 @@ class DrapDropTextEdit(LineNumberEditor):
             ):
                 # 查询改动量，保存全文到文件
                 try:
-                    keyvaluecount, sectioncount = self._modify_engine.record_modification(
-                        self._original_dict, current_content
+                    processed_content,numberofcontentlines,keyvaluecount, sectioncount = (
+                        self._modify_engine.record_modification(
+                            self._original_dict, current_content
+                        )
                     )
                 except helper.InvaildInputError as e:
                     logger.info(
-                        f"{self._alias}: invaild input error at line {int(e.args[0])+1}"
+                        f"{self.alias}: invaild input error at line {int(e.args[0])+1}"
                     )
                     critical_box = QtWidgets.QMessageBox(
                         QtWidgets.QMessageBox.Icon.Warning,
@@ -346,16 +401,16 @@ class DrapDropTextEdit(LineNumberEditor):
                 try:
                     if self._file_original_full_path.endswith("gz"):
                         filemanger.save_string_to_tgz(
-                            current_content,
+                            processed_content,
                             self._file_original_full_path,
                             self.textfilenameingz,
                         )
                     else:
                         filemanger.save_string_to_textfile(
-                            current_content, self._file_original_full_path
+                            processed_content, self._file_original_full_path
                         )
                 except PermissionError as e:
-                    logger.info(f"{self._alias}: save file error:{e}")
+                    logger.info(f"{self.alias}: save file error:{e}")
                     critical_box = QtWidgets.QMessageBox(
                         QtWidgets.QMessageBox.Icon.Warning,
                         "warning",
@@ -364,7 +419,7 @@ class DrapDropTextEdit(LineNumberEditor):
                     critical_box.exec()
                     return
                 except Exception as e:
-                    logger.error(f"{self._alias}: save file error:{e}")
+                    logger.error(f"{self.alias}: save file error:{e}")
                     critical_box = QtWidgets.QMessageBox(
                         QtWidgets.QMessageBox.Icon.Critical,
                         "critical",
@@ -379,21 +434,20 @@ class DrapDropTextEdit(LineNumberEditor):
                 information_box = QtWidgets.QMessageBox(
                     QtWidgets.QMessageBox.Icon.Information,
                     "Saved Successfully",
-                    f"There are {keyvaluecount} key-value lines and {sectioncount} node changed by you.",
+                    f"{numberofcontentlines} lines has been saved to file. \nThere are {keyvaluecount} key-value lines and {sectioncount} node changed by you.",
                 )
                 logger.info(
-                    f"There are {keyvaluecount} key-value lines and {sectioncount} node changed by you."
+                    f"{numberofcontentlines} lines has been saved to file. \nThere are {keyvaluecount} key-value lines and {sectioncount} node changed by you."
                 )
                 information_box.exec()
-
             else:
-                logger.critical(f"{self._alias}: unknown textmode:{self._textmode.name}")
+                logger.critical(f"{self.alias}: unknown textmode:{self._textmode.name}")
         finally:
             self._editbyuser = False
 
     def construct_diff_dict(self, opponent_dict: dict[str, dict[str, str]]):
         self._diff_dict = self._diff_engine.diff_dict_by_dict(
-            self._original_content, opponent_dict, self._alias
+            self._original_content, opponent_dict, self.alias
         )
 
     def output_diff_dict(self):
@@ -404,14 +458,17 @@ class DrapDropTextEdit(LineNumberEditor):
 
             self._diff_engine.output_diff_dict(self._diff_dict, cursor.insertText)
 
-            logger.debug(f"{self._alias}: switch to DIFF MODE")
+            logger.debug(f"{self.alias}: switch to DIFF MODE")
             self._textmode = enumtypes.TextMode.DIFF
             self.savebutton.setText(self._translate("MainWindow", f"同步差异到文件"))
             self.savebutton.setEnabled(True)
-            self.label.setText(
+            self.labels[0].setText(
                 self._translate(
-                    "MainWindow", f"差异编辑模式: {self._file_original_full_path}"
+                    "MainWindow", f"差异编辑模式:"
                 )
+            )
+            self.labels[1].setText(
+                self._translate("MainWindow", f"{self._file_original_full_path}")
             )
         finally:
             self._editbyuser = True
@@ -421,17 +478,17 @@ class DrapDropTextEdit(LineNumberEditor):
             self._textmode == enumtypes.TextMode.FROMFILE
             or self._textmode == enumtypes.TextMode.DIFF
         ):
-            logger.debug(f"{self._alias}: using the existing content to compute dict")
+            logger.debug(f"{self.alias}: using the existing content to compute dict")
         elif self._textmode == enumtypes.TextMode.FROMUSER:
-            logger.debug(f"{self._alias}: using the content in window to compute dict")
+            logger.debug(f"{self.alias}: using the content in window to compute dict")
             self._original_content = self.toPlainText()
 
         if self._master is None:
             self._original_list = helper.parse_string_tolist(self._original_content)
         self._new_extraselections = []
-        logger.info(f"{self._alias} has prepared its original list")
+        logger.info(f"{self.alias} has prepared its original list")
         self._original_dict = helper.parse_string_todict(self._original_content)
-        logger.info(f"{self._alias} has prepared its original dict")
+        logger.info(f"{self.alias} has prepared its original dict")
 
     def search_in_editor(self):
         # 从文本的开头开始查找
@@ -439,7 +496,7 @@ class DrapDropTextEdit(LineNumberEditor):
         # 弹出搜索框
         logger.debug("show search dialog")
         text, ok = QtWidgets.QInputDialog.getText(
-            self.parent(), f"Search in {self._alias}", "根据光标位置搜索下一个:"
+            self.parent(), f"Search in {self.alias}", "根据光标位置搜索下一个:" # type: ignore
         )
         if ok and text:
             # 查找文本
@@ -452,7 +509,7 @@ class DrapDropTextEdit(LineNumberEditor):
                     warning_box = QtWidgets.QMessageBox(
                         QtWidgets.QMessageBox.Icon.Warning,
                         "warning",
-                        f" {self._alias}中没有找到哦",
+                        f" {self.alias}中没有找到哦",
                     )
                     warning_box.exec()
 
@@ -486,13 +543,31 @@ class DrapDropTextEdit(LineNumberEditor):
         warning_box = QtWidgets.QMessageBox(
             QtWidgets.QMessageBox.Icon.Warning,
             "warning",
-            f" {self._alias} 从光标到文件底，没有找到下一个差异",
+            f" {self.alias} 从光标到文件底，没有找到下一个差异",
         )
         warning_box.exec()
 
     def focus_in_edit(self, e: QtGui.QFocusEvent):
         super().focusInEvent(e)
-        self.set_last_focus(self._alias)
+        self.set_last_focus(self.alias)
 
-    def scroll_update(self, value: int):
-        logger.debug(f"{self._alias} vertical scroll value changed: {value}")
+    def self_verticalscroll_updated(self, value: int):
+        logger.debug(f"{self.alias} vertical scroll value changed: {value}")
+
+    
+    def self_horizontalscroll_updated(self, value: int):
+        logger.debug(f"{self.alias} horizontal scroll value changed: {value}")
+
+    def opponent_changed_scroll(self):
+        logger.debug("opponent changed scroll")
+        logger.debug(f"{self.alias} syncing")
+        if self._master is not None:
+            self.verticalScrollBar().setValue(self._master.verticalScrollBar().value())
+            self.horizontalScrollBar().setValue(
+                self._master.horizontalScrollBar().value()
+            )
+        else:
+            self.verticalScrollBar().setValue(self._slave.verticalScrollBar().value())
+            self.horizontalScrollBar().setValue(
+                self._slave.horizontalScrollBar().value()
+            )

@@ -37,7 +37,7 @@ def load_tgz_to_string(tgz_path):
     with tarfile.open(tgz_path, "r:gz") as tar:
         member = tar.getmembers()[0]  # 获取第一个文件
         file = tar.extractfile(member)
-        content = file.read().decode("utf-8")
+        content = file.read().decode("utf-8")  # type: ignore raise会被上面接住
     return member.name, content
 
 
