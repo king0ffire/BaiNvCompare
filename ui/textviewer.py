@@ -512,6 +512,20 @@ class DrapDropTextEdit(LineNumberEditor):
                         f" {self.alias}中没有找到哦",
                     )
                     warning_box.exec()
+                    return
+            self.setFocus()
+    def search_text_in_editor(self,text:str):
+        if text:
+            logger.debug(f"current searching: {text}")
+            found = self.find(text)
+            if not found:
+                warning_box = QtWidgets.QMessageBox(
+                    QtWidgets.QMessageBox.Icon.Warning,
+                    "warning",
+                    f" {self.alias}的当前光标之下没有找到哦",
+                )
+                warning_box.exec()
+            self.setFocus()
 
     def NewPlainText(self, content: str):
         self._editbyuser = False
@@ -544,6 +558,30 @@ class DrapDropTextEdit(LineNumberEditor):
             QtWidgets.QMessageBox.Icon.Warning,
             "warning",
             f" {self.alias} 从光标到文件底，没有找到下一个差异",
+        )
+        warning_box.exec()
+        
+    def find_previous_extraselection(self):
+        currentblocknumber = self.textCursor().blockNumber()
+        for extraselection in reversed(self._original_extraselections):
+            extraselectionblock = extraselection.cursor.block()
+            if extraselectionblock.isValid():
+                extraselectionblocknumber = extraselectionblock.blockNumber()
+                logger.debug(
+                    f"current block : {currentblocknumber}, extraselection block : {extraselectionblocknumber}"
+                )
+                if currentblocknumber > extraselectionblocknumber:
+                    logger.info(
+                        f"found the previous diff at block: {extraselectionblocknumber}"
+                    )
+                    self.setTextCursor(extraselection.cursor)
+                    self.moveCursor(QtGui.QTextCursor.MoveOperation.EndOfBlock)
+                    self.setFocus()
+                    return
+        warning_box = QtWidgets.QMessageBox(
+            QtWidgets.QMessageBox.Icon.Warning,
+            "warning",
+            f" {self.alias} 从光标到文件头，没有找到上一个差异",
         )
         warning_box.exec()
 
