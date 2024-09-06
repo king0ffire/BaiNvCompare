@@ -1,5 +1,13 @@
 # Version 2.1.0
 
+## 项目安装
+
+pip install PyQt6
+
+pip install pyinstaller
+
+pyinstaller -onefile -w BaiNvCompare.py
+
 ## 程序原理
 
 整个文件在处理时会被解析为二级map： map<节点名,map<配置名,配置值>>。其中一对配置名和配置值被称为配置项。配置名和配置值的前后空格会被忽略。如 `"key=value"` 和 `" key = value  "` 是等价的。
