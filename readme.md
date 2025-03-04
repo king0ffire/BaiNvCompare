@@ -1,4 +1,4 @@
-# Version 2.1.0
+# BaiNvCompare - 配置比对 Version 2.1.0
 
 ## 项目安装
 
